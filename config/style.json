@@ -1,0 +1,129 @@
+{
+    "font": "Impact",
+    "fontsize": 80,
+    "color": "white",
+    "stroke_color": "black",
+    "stroke_width": 3,
+    "position": "center_bottom",
+    "margin_bottom": 550,
+    "highlight": {
+        "enabled": true,
+        "color": "white",
+        "bg_color": "#FFE600",
+        "fontsize_multiplier": 1.0 
+    },
+    "animation": {
+        "enabled": true,
+        "type": "pop_in",
+        "duration": 0.2,
+        "scale_start": 0.5,
+        "scale_end": 1.0
+    },
+    "transcription": {
+        "model": "medium",
+        "keywords": "UGC, TikTok, Marketing",
+        "word_level": true,
+        "max_words_per_segment": 2,
+        "max_delay_seconds": 0.5
+    },
+    "shadow": {
+        "enabled": false,
+        "color": "black",
+        "offset": 2,
+        "opacity": 0.4,
+        "blur": 5
+    },
+    "transitions": {
+        "enabled": true,
+        "type": "slide",
+        "direction": "left",
+        "duration": 0.4
+    },
+    "endcard": {
+        "enabled": true,
+        "overlap_seconds": 1.25,
+        "folder": "C:/Users/Usuario/Desktop/ugc editor/ENDCARDS",
+        "files": {
+            "MLA": "Endcard Meli Play 9_16 MLA.mov",
+            "MLB": "Endcard Meli Play 9_16 MLB.mov",
+            "MLM": "Endcard Meli Play 9_16 MLM.mov"
+        }
+    },
+   "postprocess": {
+        "enabled": true,
+        "_comment": "Real iPhone Look: Tuned brightness to prevent washout",
+        
+        "frame_interpolation": {
+            "enabled": true,
+            "input_fps": 30,
+            "target_fps": 60,
+            "_model_options": "rife-v4 (fast, requires rife-ncnn-vulkan) | film (Google FILM, highest quality for talking heads)",
+            "model": "rife-v4",
+            "gpu_id": 0,
+            "gpu_memory_limit": null
+        },
+        
+        "lut": {
+            "enabled": false,
+            "file": ""
+        },
+        
+        "color_grading": {
+            "enabled": true,
+            
+            "_comment": "Darkened to -0.10 to balance the shadow lift",
+            "brightness": -0.10,
+            
+            "_comment": "Contrast 0.92 keeps it flat but not 'foggy'",
+            "contrast": 0.92,
+            
+            "saturation": 0.90,
+            "gamma": 1.0,
+            
+            "color_balance": { "enabled": false },
+            
+            "curves": {
+                "enabled": true,
+                "_comment": "Shadows reduced from 0.45 to 0.28 to fix 'Too Bright' issue",
+                
+                "black_point": 0.02,         
+                "shadows_lift": 0.28,        
+                "highlights_compress": 0.85, 
+                "white_point": 1.0
+            }
+        },
+        
+        "chromatic_aberration": {
+            "enabled": false,
+            "offset_pixels": 2
+        },
+        
+        "lens_distortion": {
+            "enabled": true,
+            "k1": -0.05
+        },
+        
+        "vignette": {
+            "enabled": true,
+            "intensity": 0.3
+        },
+        
+        "halation": {
+            "enabled": false,
+            "intensity": 0.15,
+            "radius": 5,
+            "color": "warm"
+        },
+        
+        "grain": {
+            "enabled": true,
+            "strength": 20,
+            "temporal": true
+        },
+        
+        "output": {
+            "crf": 23,
+            "preset": "slow"
+        }
+    }
+}

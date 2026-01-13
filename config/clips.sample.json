@@ -1,0 +1,14 @@
+{
+    "clips": [
+        {
+            "path": "./assets/video/clip1.mp4",
+            "start": 0,
+            "end": 5
+        },
+        {
+            "path": "./assets/video/clip2.mp4",
+            "start": 2,
+            "end": null
+        }
+    ]
+}
