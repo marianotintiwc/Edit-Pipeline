@@ -83,10 +83,28 @@ def main():
     try:
         from moviepy.config import change_settings
         import shutil
+        import glob
         
         magick_path = shutil.which("magick")
+        
+        # If not in PATH, check common installation locations
+        if not magick_path:
+            common_paths = [
+                r"C:\Program Files\ImageMagick-*\magick.exe",
+                r"C:\Program Files (x86)\ImageMagick-*\magick.exe",
+            ]
+            for pattern in common_paths:
+                matches = glob.glob(pattern)
+                if matches:
+                    magick_path = matches[0]
+                    # Add ImageMagick directory to PATH
+                    magick_dir = os.path.dirname(magick_path)
+                    os.environ["PATH"] = magick_dir + os.pathsep + os.environ["PATH"]
+                    print_status(f"Found ImageMagick at: {magick_dir}", "INFO")
+                    break
+        
         if magick_path:
-            print_status(f"ImageMagick configured at: {magick_path}", "INFO")
+            print_status(f"ImageMagick configured: {os.path.basename(magick_path)}", "OK")
             change_settings({"IMAGEMAGICK_BINARY": magick_path})
         else:
             print_status("'magick' binary not found. TextClip might fail.", "WARN")
