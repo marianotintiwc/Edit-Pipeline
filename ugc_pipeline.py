@@ -1,0 +1,337 @@
+import argparse
+import os
+import sys
+import time
+import logging
+from datetime import datetime
+
+# Add current directory to path so we can import ugc_pipeline
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from ugc_pipeline.clips import process_clips, process_project_clips
+from ugc_pipeline.audio import process_audio
+from ugc_pipeline.subtitles import generate_subtitles
+from ugc_pipeline.style import load_style
+from ugc_pipeline.export import export_video
+
+# Setup logging
+def setup_logging():
+    """Configure logging to both file and console."""
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    log_file = os.path.join(log_dir, f"pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    return log_file
+
+def print_banner():
+    """Print a startup banner."""
+    print("\n" + "="*60)
+    print("  UGC VIDEO PIPELINE")
+    print("  Version 2.0 - Post-processing enabled")
+    print("="*60 + "\n")
+
+def print_step(step_num: int, total_steps: int, title: str):
+    """Print a formatted step header with progress."""
+    progress = f"[{step_num}/{total_steps}]"
+    print(f"\n{'─'*60}")
+    print(f"  {progress} {title}")
+    print(f"{'─'*60}")
+
+def print_status(message: str, status: str = "INFO"):
+    """Print a status message with icon."""
+    icons = {
+        "INFO": "ℹ️ ",
+        "OK": "✅",
+        "WARN": "⚠️ ",
+        "ERROR": "❌",
+        "PROGRESS": "⏳",
+        "DONE": "🎬"
+    }
+    icon = icons.get(status, "  ")
+    print(f"  {icon} {message}")
+    logging.info(f"[{status}] {message}")
+
+def main():
+    start_time = time.time()
+    log_file = setup_logging()
+    print_banner()
+    print_status(f"Log file: {log_file}", "INFO")
+    
+    # Ensure ffmpeg is in PATH for Whisper
+    try:
+        import imageio_ffmpeg
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_dir = os.path.dirname(ffmpeg_path)
+        
+        # Add to PATH if not present
+        if ffmpeg_dir not in os.environ["PATH"]:
+            print_status(f"Adding ffmpeg to PATH: {ffmpeg_dir}", "INFO")
+            os.environ["PATH"] += os.pathsep + ffmpeg_dir
+    except ImportError:
+        print_status("imageio_ffmpeg not found. Whisper might fail if ffmpeg is not in PATH.", "WARN")
+
+    # Configure ImageMagick for MoviePy
+    try:
+        from moviepy.config import change_settings
+        import shutil
+        
+        magick_path = shutil.which("magick")
+        if magick_path:
+            print_status(f"ImageMagick configured at: {magick_path}", "INFO")
+            change_settings({"IMAGEMAGICK_BINARY": magick_path})
+        else:
+            print_status("'magick' binary not found. TextClip might fail.", "WARN")
+    except Exception as e:
+        print_status(f"Error configuring ImageMagick: {e}", "ERROR")
+
+    parser = argparse.ArgumentParser(description="UGC Video Pipeline CLI")
+    
+    parser.add_argument("--clips_config", help="Path to clips JSON config", default=None)
+    parser.add_argument("--music", help="Path to background music file", default=None)
+    parser.add_argument("--subtitles", help="Path to subtitles SRT file", default=None)
+    parser.add_argument("--output", help="Path to output MP4 file", default=None)
+    parser.add_argument("--style", help="Path to style JSON config", default=None)
+    parser.add_argument("--project", help="Path to UGC project folder (contains scene_1.mp4, scene_2.mp4, broll, scene_3.mp4 and MP3s)", default=None)
+    
+    args = parser.parse_args()
+    
+    # Define defaults
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    print_status("Resolving input paths...", "PROGRESS")
+    
+    # Clips Config
+    if args.clips_config:
+        clips_config_path = args.clips_config
+    else:
+        video_dir = os.path.join(base_dir, "assets", "video")
+        p1 = os.path.join(base_dir, "config", "clips.json")
+        p2 = os.path.join(base_dir, "config", "clips.sample.json")
+        
+        has_videos = False
+        if os.path.exists(video_dir):
+            video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+            for f in os.listdir(video_dir):
+                if os.path.splitext(f)[1].lower() in video_extensions:
+                    has_videos = True
+                    break
+        
+        if has_videos:
+            clips_config_path = video_dir
+        else:
+            clips_config_path = p1 if os.path.exists(p1) else p2
+            
+        print_status(f"Clips source: {clips_config_path}", "INFO")
+
+    # Music
+    if args.music:
+        music_path = args.music
+    else:
+        music_path = os.path.join(base_dir, "assets", "audio", "music.mp3")
+        print_status(f"Music: {os.path.basename(music_path)}", "INFO")
+
+    # Subtitles
+    if args.subtitles:
+        subtitles_path = args.subtitles
+    else:
+        subtitles_path = os.path.join(base_dir, "assets", "subs", "subtitles.srt")
+
+    # Output
+    if args.output:
+        output_path = args.output
+    else:
+        output_path = os.path.join(base_dir, "exports", "video_final.mp4")
+    print_status(f"Output: {output_path}", "INFO")
+
+    # Style
+    if args.style:
+        style_path = args.style
+    else:
+        p1 = os.path.join(base_dir, "config", "style.json")
+        p2 = os.path.join(base_dir, "config", "style.sample.json")
+        style_path = p1 if os.path.exists(p1) else p2
+    print_status(f"Style config: {os.path.basename(style_path)}", "INFO")
+    
+    TOTAL_STEPS = 5
+    
+    # ─────────────────────────────────────────────────────────────
+    # STEP 1: Load Style
+    # ─────────────────────────────────────────────────────────────
+    print_step(1, TOTAL_STEPS, "LOADING STYLE CONFIGURATION")
+    step_start = time.time()
+    style_config = load_style(style_path)
+    
+    # Report postprocess status
+    pp_config = style_config.get("postprocess", {})
+    if pp_config.get("enabled", False):
+        print_status("Post-processing: ENABLED", "OK")
+        print_status(f"  Color grading: {'ON' if pp_config.get('color_grading', {}).get('enabled') else 'OFF'}", "INFO")
+        print_status(f"  Grain: {'ON' if pp_config.get('grain', {}).get('enabled') else 'OFF'} (strength: {pp_config.get('grain', {}).get('strength', 0)})", "INFO")
+        print_status(f"  Vignette: {'ON' if pp_config.get('vignette', {}).get('enabled') else 'OFF'}", "INFO")
+    else:
+        print_status("Post-processing: DISABLED", "WARN")
+    print_status(f"Step 1 completed in {time.time() - step_start:.1f}s", "OK")
+    
+    # ─────────────────────────────────────────────────────────────
+    # STEP 2: Process Clips
+    # ─────────────────────────────────────────────────────────────
+    print_step(2, TOTAL_STEPS, "PROCESSING VIDEO CLIPS")
+    step_start = time.time()
+    try:
+        if args.project:
+            print_status(f"Project: {os.path.basename(args.project)}", "INFO")
+            video_clip = process_project_clips(args.project, style_config)
+        else:
+            video_clip = process_clips(clips_config_path, style_config)
+        print_status(f"Video duration: {video_clip.duration:.2f}s", "OK")
+        print_status(f"Step 2 completed in {time.time() - step_start:.1f}s", "OK")
+    except Exception as e:
+        print_status(f"Error processing clips: {e}", "ERROR")
+        import traceback
+        traceback.print_exc()
+        logging.error(traceback.format_exc())
+        sys.exit(1)
+
+    # ─────────────────────────────────────────────────────────────
+    # STEP 3: Add Audio
+    # ─────────────────────────────────────────────────────────────
+    print_step(3, TOTAL_STEPS, "ADDING BACKGROUND AUDIO")
+    step_start = time.time()
+    video_clip = process_audio(video_clip, music_path)
+    print_status(f"Step 3 completed in {time.time() - step_start:.1f}s", "OK")
+    
+    # ─────────────────────────────────────────────────────────────
+    # STEP 4: Generate Subtitles
+    # ─────────────────────────────────────────────────────────────
+    print_step(4, TOTAL_STEPS, "GENERATING SUBTITLES")
+    step_start = time.time()
+    
+    # Transcription Settings from Style Config
+    transcription_config = style_config.get("transcription", {})
+    model_name = transcription_config.get("model", "small")
+    keywords = transcription_config.get("keywords", None)
+    word_level = transcription_config.get("word_level", False)
+    max_words = transcription_config.get("max_words_per_segment", 1)
+    max_delay = transcription_config.get("max_delay_seconds", 0.5)
+    
+    # Detect language from project folder GEO code
+    transcription_language = "es"  # Default to Spanish
+    if args.project:
+        project_name = os.path.basename(args.project.rstrip('/'))
+        if project_name.endswith("-MLB"):
+            transcription_language = "pt"
+            print_status("GEO: MLB (Brazil) → Portuguese", "INFO")
+        elif project_name.endswith("-MLA"):
+            transcription_language = "es"
+            print_status("GEO: MLA (Argentina) → Spanish", "INFO")
+        elif project_name.endswith("-MLM"):
+            transcription_language = "es"
+            print_status("GEO: MLM (Mexico) → Spanish", "INFO")
+    
+    # Workflow:
+    # 1. Check for manual override: assets/subs/subtitles.srt
+    # 2. Check for existing auto-generated: assets/subs/auto_generated.srt
+    # 3. Generate new: assets/subs/auto_generated.srt
+    
+    manual_subs_path = os.path.join(base_dir, "assets", "subs", "subtitles.srt")
+    auto_subs_path = os.path.join(base_dir, "assets", "subs", "auto_generated.srt")
+    
+    final_subtitles_path = None
+    
+    if os.path.exists(manual_subs_path):
+        print_status(f"Using manual subtitles: {os.path.basename(manual_subs_path)}", "OK")
+        final_subtitles_path = manual_subs_path
+    elif os.path.exists(auto_subs_path):
+        print_status(f"Using cached subtitles: {os.path.basename(auto_subs_path)}", "OK")
+        final_subtitles_path = auto_subs_path
+    else:
+        print_status("No subtitles found. Generating with Whisper...", "PROGRESS")
+        try:
+            from ugc_pipeline.transcription import transcribe_audio_array
+            import numpy as np
+            
+            print_status("Extracting audio to memory (16kHz mono)...", "PROGRESS")
+            
+            audio_chunks = []
+            for chunk in video_clip.audio.iter_chunks(fps=16000, chunksize=3000):
+                audio_chunks.append(chunk)
+            
+            if not audio_chunks:
+                raise ValueError("Could not extract audio chunks from video.")
+                
+            audio_array = np.vstack(audio_chunks)
+            
+            if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
+                audio_array = audio_array.mean(axis=1)
+            
+            print_status(f"Transcribing (model={model_name}, lang={transcription_language})...", "PROGRESS")
+            transcribe_audio_array(
+                audio_array, 
+                auto_subs_path, 
+                model_name=model_name, 
+                language=transcription_language, 
+                initial_prompt=keywords,
+                word_level=word_level,
+                max_words=max_words,
+                silence_threshold=max_delay
+            )
+            
+            final_subtitles_path = auto_subs_path
+            print_status(f"Subtitles saved: {os.path.basename(auto_subs_path)}", "OK")
+            
+        except ImportError:
+            print_status("openai-whisper not installed. Cannot generate subtitles.", "ERROR")
+            final_subtitles_path = None
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            logging.error(traceback.format_exc())
+            print_status(f"Subtitle generation failed: {e}", "ERROR")
+            print_status("Proceeding without subtitles.", "WARN")
+            final_subtitles_path = None
+            
+    final_clip = generate_subtitles(video_clip, final_subtitles_path, style_config)
+    print_status(f"Step 4 completed in {time.time() - step_start:.1f}s", "OK")
+    
+    # ─────────────────────────────────────────────────────────────
+    # STEP 5: Export Final Video
+    # ─────────────────────────────────────────────────────────────
+    print_step(5, TOTAL_STEPS, "EXPORTING FINAL VIDEO")
+    step_start = time.time()
+    
+    try:
+        export_video(final_clip, output_path, style_config)
+        print_status(f"Step 5 completed in {time.time() - step_start:.1f}s", "OK")
+    except Exception as e:
+        print_status(f"Export failed: {e}", "ERROR")
+        import traceback
+        traceback.print_exc()
+        logging.error(traceback.format_exc())
+        sys.exit(1)
+    
+    # ─────────────────────────────────────────────────────────────
+    # DONE
+    # ─────────────────────────────────────────────────────────────
+    total_time = time.time() - start_time
+    print("\n" + "="*60)
+    print_status(f"PIPELINE COMPLETE!", "DONE")
+    print_status(f"Total time: {total_time:.1f}s ({total_time/60:.1f} minutes)", "INFO")
+    print_status(f"Output: {output_path}", "INFO")
+    
+    # File size
+    if os.path.exists(output_path):
+        file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        print_status(f"File size: {file_size_mb:.2f} MB", "INFO")
+    print("="*60 + "\n")
+
+if __name__ == "__main__":
+    main()
