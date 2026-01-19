@@ -11,6 +11,95 @@ A video editing automation pipeline for UGC-style content (9:16 vertical format)
 - Export to vertical MP4 (1080x1920)
 - **RunPod Serverless deployment** for scalable cloud processing
 
+---
+
+## 📋 Guía Rápida de Requests
+
+### Ejemplo Completo: 3 escenas + 2 b-roll
+
+```json
+{
+  "input": {
+    "geo": "MLA",
+    "clips": [
+      {"type": "scene", "url": "https://bucket.s3.amazonaws.com/escena1.mp4"},
+      {"type": "scene", "url": "https://bucket.s3.amazonaws.com/escena2.mp4"},
+      {"type": "broll", "url": "https://bucket.s3.amazonaws.com/broll1.mp4"},
+      {"type": "scene", "url": "https://bucket.s3.amazonaws.com/escena3.mp4"},
+      {"type": "broll", "url": "https://bucket.s3.amazonaws.com/broll2.mp4"}
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "edit_preset": "standard_vertical",
+    "style_overrides": {
+      "transcription": {"model": "large"}
+    }
+  }
+}
+```
+
+### Con Recorte (cortar 0.1s antes del final)
+
+```json
+{
+  "input": {
+    "geo": "MLA",
+    "clips": [
+      {"type": "scene", "url": "https://.../escena1.mp4"},
+      {"type": "scene", "url": "https://.../escena2.mp4"},
+      {"type": "broll", "url": "https://.../broll1.mp4"},
+      {"type": "scene", "url": "https://.../escena3.mp4", "end_time": -0.1},
+      {"type": "broll", "url": "https://.../broll2.mp4"}
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto"
+  }
+}
+```
+
+### Para Brasil (Portugués)
+
+```json
+{
+  "input": {
+    "geo": "MLB",
+    "clips": [
+      {"type": "scene", "url": "https://.../cena1.mp4"},
+      {"type": "scene", "url": "https://.../cena2.mp4"},
+      {"type": "broll", "url": "https://.../broll1.mp4"},
+      {"type": "scene", "url": "https://.../cena3.mp4"},
+      {"type": "broll", "url": "https://.../broll2.mp4"}
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto"
+  }
+}
+```
+
+### 🔑 Campos Clave
+
+| Campo | Valores | Descripción |
+|-------|---------|-------------|
+| `geo` | `MLA`, `MLC`, `MLM` = español<br>`MLB` = portugués | Determina idioma de Whisper |
+| `clips[].type` | `scene` \| `broll` | Tipo de clip |
+| `clips[].url` | URL http/https | Video a descargar |
+| `clips[].start_time` | `float` \| `null` | Segundo donde empieza el recorte |
+| `clips[].end_time` | `float` \| `null` | Segundo donde termina. **Negativo = cortar desde el final** (ej: `-0.1`) |
+| `music_url` | `"random"` \| URL \| `null` | `"random"` = música aleatoria de `assets/audio/` |
+| `subtitle_mode` | `auto` \| `manual` \| `none` | Modo de subtítulos |
+| `style_overrides.transcription.model` | `tiny`, `base`, `small`, `medium`, `large` | Modelo Whisper |
+
+### 📍 Orden de Clips
+
+El orden en el array `clips` es el orden final del video:
+
+```
+clips[0] → clips[1] → clips[2] → clips[3] → clips[4]
+escena1  → escena2  → broll1   → escena3  → broll2
+```
+
+---
+
 ## Requirements
 
 ### Local Development
@@ -67,6 +156,31 @@ Set these in your RunPod endpoint configuration:
 
 Send a POST request to your RunPod endpoint with this JSON body:
 
+#### New Format (Recommended) - With Scenes + B-Roll
+
+```json
+{
+  "input": {
+    "geo": "MLA",
+    "clips": [
+      {"type": "scene", "url": "https://example.com/scene1.mp4"},
+      {"type": "scene", "url": "https://example.com/scene2.mp4"},
+      {"type": "broll", "url": "https://example.com/broll1.mp4"},
+      {"type": "scene", "url": "https://example.com/scene3.mp4", "end_time": -0.1},
+      {"type": "broll", "url": "https://example.com/broll2.mp4"}
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "edit_preset": "standard_vertical",
+    "style_overrides": {
+      "transcription": {"model": "large"}
+    }
+  }
+}
+```
+
+#### Legacy Format (Still Supported)
+
 ```json
 {
   "input": {
@@ -79,14 +193,7 @@ Send a POST request to your RunPod endpoint with this JSON body:
     "edit_preset": "standard_vertical",
     "music_url": "https://example.com/background.mp3",
     "music_volume": 0.3,
-    "loop_music": true,
-    "subtitle_mode": "auto",
-    "enable_interpolation": true,
-    "rife_model": "rife-v4",
-    "style_overrides": {
-      "fontsize": 80,
-      "color": "white"
-    }
+    "subtitle_mode": "auto"
   }
 }
 ```
@@ -95,9 +202,45 @@ Send a POST request to your RunPod endpoint with this JSON body:
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `video_urls` | `string[]` | Yes | - | Exactly 4 video URLs |
+| **Video Input (use ONE)** |
+| `video_urls` | `string[]` | No* | - | Legacy: list of video URLs (all treated as scenes) |
+| `clips` | `object[]` | No* | - | **NEW:** Ordered list of clips with metadata (see below) |
+| **Geo & Language** |
+| `geo` | `string` | No | `null` | `MLA`, `MLB`, `MLC`, `MLM` - determines Whisper language (MLB=Portuguese, others=Spanish) |
+| **Music** |
+| `music_url` | `string` | No | `null` | Background music URL, or `"random"` to pick from `assets/audio` |
+| `music_volume` | `float` | No | `0.3` | Music volume (0.0-1.0) |
+| `loop_music` | `bool` | No | `true` | Loop music to video length |
+| **Subtitles** |
+| `subtitle_mode` | `string` | No | `auto` | `auto`, `manual`, or `none` |
+| `manual_srt_url` | `string` | No | `null` | SRT URL if `subtitle_mode=manual` |
+| **Processing** |
 | `edit_preset` | `string` | No | `standard_vertical` | Editing preset (see below) |
-| `music_url` | `string` | No | `null` | Background music URL |
+| `enable_interpolation` | `bool` | No | `true` | Enable RIFE frame interpolation |
+| `rife_model` | `string` | No | `rife-v4` | RIFE model variant |
+| `style_overrides` | `object` | No | `null` | Override style.json settings |
+
+*Either `video_urls` or `clips` must be provided.
+
+#### Clips Object Schema
+
+Each clip in the `clips` array:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | `string` | No | `scene` | `scene` or `broll` |
+| `url` | `string` | Yes | - | Video URL (http/https) |
+| `start_time` | `float` | No | `null` | Trim start (seconds) |
+| `end_time` | `float` | No | `null` | Trim end (seconds). **Use negative values to cut from end** (e.g., `-0.1` = cut 0.1s before end) |
+
+#### Geo & Language Mapping
+
+| Geo | Country | Whisper Language |
+|-----|---------|------------------|
+| `MLA` | Argentina | Spanish (`es`) |
+| `MLB` | Brazil | Portuguese (`pt`) |
+| `MLC` | Chile | Spanish (`es`) |
+| `MLM` | Mexico | Spanish (`es`) |
 | `music_volume` | `float` | No | `0.3` | Music volume (0.0-1.0) |
 | `loop_music` | `bool` | No | `true` | Loop music to video length |
 | `subtitle_mode` | `string` | No | `auto` | `auto`, `manual`, or `none` |
@@ -137,32 +280,38 @@ Send a POST request to your RunPod endpoint with this JSON body:
 }
 ```
 
-### Example: Python Client
+### Example: Python Client (New Format)
 
 ```python
 import runpod
 
 runpod.api_key = "your-api-key"
 
+# Example: 3 scenes + 2 b-rolls with random music
 response = runpod.run_sync(
     endpoint_id="your-endpoint-id",
     input={
-        "video_urls": [
-            "https://example.com/v1.mp4",
-            "https://example.com/v2.mp4",
-            "https://example.com/v3.mp4",
-            "https://example.com/v4.mp4"
+        "geo": "MLA",  # Argentina = Spanish
+        "clips": [
+            {"type": "scene", "url": "https://example.com/scene1.mp4"},
+            {"type": "scene", "url": "https://example.com/scene2.mp4"},
+            {"type": "broll", "url": "https://example.com/broll1.mp4"},
+            {"type": "scene", "url": "https://example.com/scene3.mp4", "end_time": -0.1},
+            {"type": "broll", "url": "https://example.com/broll2.mp4"}
         ],
-        "edit_preset": "standard_vertical",
+        "music_url": "random",
         "subtitle_mode": "auto",
-        "enable_interpolation": True
+        "edit_preset": "standard_vertical",
+        "style_overrides": {
+            "transcription": {"model": "large"}
+        }
     }
 )
 
 print(f"Output URL: {response['output_url']}")
 ```
 
-### Example: cURL
+### Example: cURL (New Format)
 
 ```bash
 curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
@@ -170,13 +319,16 @@ curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
   -H "Content-Type: application/json" \
   -d '{
     "input": {
-      "video_urls": [
-        "https://example.com/v1.mp4",
-        "https://example.com/v2.mp4",
-        "https://example.com/v3.mp4",
-        "https://example.com/v4.mp4"
+      "geo": "MLB",
+      "clips": [
+        {"type": "scene", "url": "https://example.com/scene1.mp4"},
+        {"type": "scene", "url": "https://example.com/scene2.mp4"},
+        {"type": "broll", "url": "https://example.com/broll1.mp4"},
+        {"type": "scene", "url": "https://example.com/scene3.mp4"},
+        {"type": "broll", "url": "https://example.com/broll2.mp4"}
       ],
-      "edit_preset": "standard_vertical"
+      "music_url": "random",
+      "subtitle_mode": "auto"
     }
   }'
 ```

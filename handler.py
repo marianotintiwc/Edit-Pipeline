@@ -12,16 +12,49 @@ Usage:
 
 Input Schema:
     {
-        "video_urls": [str, str, str, str],    # Exactly 4 video URLs
-        "edit_preset": str,                     # "standard_vertical", "no_interpolation", "no_subtitles"
-        "music_url": str | None,               # Optional background music URL
+        # === VIDEO INPUT (use ONE of these) ===
+        "video_urls": [str, ...],              # Legacy: list of video URLs (all treated as scenes)
+        "clips": [                              # NEW: Ordered list of clips with metadata
+            {
+                "type": "scene" | "broll",     # Clip type
+                "url": str,                    # Video URL (http/https)
+                "start_time": float | None,    # Optional trim start (seconds)
+                "end_time": float | None       # Optional trim end (seconds, use -0.1 for "cut 0.1s before end")
+            }
+        ],
+        
+        # === GEO & LANGUAGE ===
+        "geo": str,                            # NEW: "MLA" | "MLB" | "MLC" | "MLM" (MLB=Portuguese, others=Spanish)
+        
+        # === MUSIC ===
+        "music_url": str | "random" | None,    # NEW: "random" picks from assets/audio
         "music_volume": float,                 # 0.0 - 1.0 (default: 0.3)
         "loop_music": bool,                    # Loop music to video length (default: true)
+        
+        # === SUBTITLES ===
         "subtitle_mode": str,                  # "auto" | "manual" | "none"
         "manual_srt_url": str | None,          # SRT URL if subtitle_mode="manual"
+        
+        # === PROCESSING ===
+        "edit_preset": str,                    # "standard_vertical", "no_interpolation", "no_subtitles", "simple_concat"
         "enable_interpolation": bool,          # Enable RIFE (default: true)
         "rife_model": str,                     # "rife-v4" | "rife-v4.6" (default: "rife-v4")
         "style_overrides": dict | None         # Partial style.json overrides
+    }
+    
+    Example (new format with scenes + b-roll):
+    {
+        "geo": "MLA",
+        "clips": [
+            {"type": "scene", "url": "https://..."},
+            {"type": "scene", "url": "https://..."},
+            {"type": "broll", "url": "https://..."},
+            {"type": "scene", "url": "https://...", "end_time": -0.1},
+            {"type": "broll", "url": "https://..."}
+        ],
+        "music_url": "random",
+        "subtitle_mode": "auto",
+        "edit_preset": "standard_vertical"
     }
 
 Output Schema:
@@ -48,7 +81,9 @@ import shutil
 import time
 import logging
 import traceback
-from typing import Dict, Any, List, Optional, Tuple
+import random
+import glob
+from typing import Dict, Any, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -84,11 +119,65 @@ class SubtitleMode(str, Enum):
 
 
 @dataclass
+class ClipInput:
+    """Single clip input with metadata."""
+    url: str
+    clip_type: str = "scene"  # "scene" or "broll"
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None  # Use negative values for "cut X seconds before end" (e.g., -0.1)
+    
+    def __post_init__(self):
+        if not self.url.startswith(('http://', 'https://')):
+            raise ValueError(f"Clip URL must be HTTP/HTTPS, got: {self.url}")
+        if self.clip_type not in ("scene", "broll"):
+            raise ValueError(f"clip_type must be 'scene' or 'broll', got: {self.clip_type}")
+
+
+class Geo(str, Enum):
+    """Supported geographic regions."""
+    MLA = "MLA"  # Argentina - Spanish
+    MLB = "MLB"  # Brazil - Portuguese  
+    MLC = "MLC"  # Chile - Spanish
+    MLM = "MLM"  # Mexico - Spanish
+
+
+def get_whisper_language(geo: Optional[str]) -> str:
+    """Get Whisper language code based on geo. MLB=Portuguese, others=Spanish."""
+    if geo and geo.upper() == "MLB":
+        return "pt"
+    return "es"
+
+
+def get_random_music_path() -> Optional[str]:
+    """Select a random music file from assets/audio."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    audio_dir = os.path.join(base_dir, "assets", "audio")
+    
+    audio_extensions = ['*.mp3', '*.wav', '*.m4a', '*.aac', '*.ogg']
+    music_files = []
+    
+    for ext in audio_extensions:
+        music_files.extend(glob.glob(os.path.join(audio_dir, ext)))
+    
+    if not music_files:
+        return None
+    
+    return random.choice(music_files)
+
+
+@dataclass
 class JobInput:
     """Validated job input parameters."""
-    video_urls: List[str]
+    # Video input - support both legacy (video_urls) and new (clips) format
+    video_urls: Optional[List[str]] = None
+    clips: Optional[List[ClipInput]] = None
+    
+    # Geo for language detection
+    geo: Optional[str] = None
+    
+    # Processing options
     edit_preset: EditPreset = EditPreset.STANDARD_VERTICAL
-    music_url: Optional[str] = None
+    music_url: Optional[str] = None  # Can be URL, "random", or None
     music_volume: float = 0.3
     loop_music: bool = True
     subtitle_mode: SubtitleMode = SubtitleMode.AUTO
@@ -100,23 +189,57 @@ class JobInput:
     
     def __post_init__(self):
         """Validate inputs after initialization."""
-        if len(self.video_urls) != 4:
-            raise ValueError(f"Exactly 4 video URLs required, got {len(self.video_urls)}")
+        # Must have either video_urls or clips
+        if not self.video_urls and not self.clips:
+            raise ValueError("Either 'video_urls' or 'clips' must be provided")
         
-        if not all(url.startswith(('http://', 'https://')) for url in self.video_urls):
-            raise ValueError("All video URLs must be valid HTTP/HTTPS URLs")
+        # If using legacy video_urls, convert to clips format
+        if self.video_urls and not self.clips:
+            self.clips = [
+                ClipInput(url=url, clip_type="scene")
+                for url in self.video_urls
+            ]
         
+        # Validate clips
+        if not self.clips or len(self.clips) == 0:
+            raise ValueError("At least one clip is required")
+        
+        for clip in self.clips:
+            if isinstance(clip, dict):
+                # Convert dict to ClipInput
+                pass  # Will be handled in parse_clips
+            elif not isinstance(clip, ClipInput):
+                raise ValueError(f"Invalid clip format: {clip}")
+        
+        # Validate music volume
         if self.music_volume < 0.0 or self.music_volume > 1.0:
             raise ValueError(f"music_volume must be 0.0-1.0, got {self.music_volume}")
         
+        # Validate subtitle mode
         if self.subtitle_mode == SubtitleMode.MANUAL and not self.manual_srt_url:
             raise ValueError("manual_srt_url required when subtitle_mode='manual'")
+        
+        # Validate geo if provided
+        if self.geo:
+            self.geo = self.geo.upper()
+            if self.geo not in ["MLA", "MLB", "MLC", "MLM"]:
+                raise ValueError(f"geo must be MLA, MLB, MLC, or MLM, got: {self.geo}")
         
         # Convert string enums if needed
         if isinstance(self.edit_preset, str):
             self.edit_preset = EditPreset(self.edit_preset)
         if isinstance(self.subtitle_mode, str):
             self.subtitle_mode = SubtitleMode(self.subtitle_mode)
+    
+    def get_whisper_language(self) -> str:
+        """Get Whisper language based on geo."""
+        return get_whisper_language(self.geo)
+    
+    def get_resolved_music_path(self) -> Optional[str]:
+        """Resolve music_url: if 'random', pick from assets/audio; otherwise return as-is."""
+        if self.music_url == "random":
+            return get_random_music_path()
+        return self.music_url  # URL or None
 
 
 @dataclass 
@@ -228,43 +351,88 @@ def download_file(url: str, dest_path: str, ctx: ProcessingContext) -> str:
 
 
 def download_videos(
-    urls: List[str],
+    clips: List[ClipInput],
     work_dir: str,
     ctx: ProcessingContext
-) -> List[str]:
-    """Download all input videos to work directory."""
+) -> List[Dict[str, Any]]:
+    """
+    Download all input videos to work directory.
+    
+    Returns list of clip dicts with local paths and trim info.
+    """
     video_dir = os.path.join(work_dir, "videos")
     os.makedirs(video_dir, exist_ok=True)
     
-    paths = []
-    for i, url in enumerate(urls):
+    downloaded_clips = []
+    for i, clip in enumerate(clips):
         # Extract extension from URL or default to .mp4
-        ext = os.path.splitext(url.split('?')[0])[1] or '.mp4'
-        dest = os.path.join(video_dir, f"input_{i+1}{ext}")
-        download_file(url, dest, ctx)
-        paths.append(dest)
+        ext = os.path.splitext(clip.url.split('?')[0])[1] or '.mp4'
+        clip_type_prefix = "broll" if clip.clip_type == "broll" else "scene"
+        dest = os.path.join(video_dir, f"{clip_type_prefix}_{i+1}{ext}")
+        download_file(clip.url, dest, ctx)
+        
+        downloaded_clips.append({
+            "path": dest,
+            "type": clip.clip_type,
+            "start": clip.start_time,
+            "end": clip.end_time
+        })
+        ctx.log(f"  [{clip.clip_type.upper()}] {os.path.basename(dest)}")
     
-    return paths
+    return downloaded_clips
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration Generation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generate_clips_config(video_paths: List[str], work_dir: str) -> str:
+def generate_clips_config(downloaded_clips: List[Dict[str, Any]], work_dir: str, ctx: ProcessingContext) -> str:
     """
     Generate clips.json configuration for the pipeline.
     
     Args:
-        video_paths: List of local video file paths
+        downloaded_clips: List of clip dicts with path, type, start, end
         work_dir: Working directory
+        ctx: Processing context for logging
         
     Returns:
         Path to generated clips.json
     """
-    clips = [{"path": path, "start": None, "end": None} for path in video_paths]
+    from moviepy.editor import VideoFileClip
+    
+    clips = []
+    for clip_data in downloaded_clips:
+        path = clip_data["path"]
+        start = clip_data.get("start")
+        end = clip_data.get("end")
+        
+        # Handle negative end_time (e.g., -0.1 means "cut 0.1s before actual end")
+        if end is not None and end < 0:
+            original_end = end
+            try:
+                with VideoFileClip(path) as temp_clip:
+                    actual_duration = temp_clip.duration
+                    end = actual_duration + end  # e.g., 10.0 + (-0.1) = 9.9
+                    ctx.log(f"  Trim: {os.path.basename(path)} cut to {end:.2f}s (removed {-original_end:.2f}s from end)")
+            except Exception as e:
+                ctx.log(f"  Warning: Could not get duration for {path}: {e}", "WARN")
+                end = None
+        
+        clips.append({
+            "path": path,
+            "type": clip_data.get("type", "scene"),
+            "start": start,
+            "end": end
+        })
     
     config = {"clips": clips}
+    
+    config_path = os.path.join(work_dir, "clips.json")
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    ctx.log(f"Generated clips.json with {len(clips)} clips")
+    return config_path
     
     config_path = os.path.join(work_dir, "clips.json")
     with open(config_path, 'w') as f:
@@ -445,22 +613,39 @@ def run_pipeline(
     """
     work_dir = ctx.work_dir
     
-    # Step 1: Download input videos
+    # Step 1: Download input videos (using new clips format)
     ctx.log("Step 1/6: Downloading input videos...")
-    video_paths = download_videos(job_input.video_urls, work_dir, ctx)
-    ctx.log(f"Downloaded {len(video_paths)} videos in {ctx.elapsed():.1f}s")
+    if not job_input.clips:
+        raise ValueError("No clips to process")
+    downloaded_clips = download_videos(job_input.clips, work_dir, ctx)
+    scene_count = sum(1 for c in downloaded_clips if c.get("type") == "scene")
+    broll_count = sum(1 for c in downloaded_clips if c.get("type") == "broll")
+    ctx.log(f"Downloaded {len(downloaded_clips)} clips ({scene_count} scenes, {broll_count} b-roll) in {ctx.elapsed():.1f}s")
     
-    # Step 2: Download music (if provided)
+    # Step 2: Handle music (download URL, use random, or skip)
     music_path = None
-    if job_input.music_url:
+    resolved_music = job_input.get_resolved_music_path()
+    
+    if resolved_music == "random" or job_input.music_url == "random":
+        # Already resolved by get_resolved_music_path()
+        music_path = get_random_music_path()
+        if music_path:
+            ctx.log(f"Step 2/6: Using random music: {os.path.basename(music_path)}")
+        else:
+            ctx.log("Step 2/6: No music files found in assets/audio", "WARN")
+    elif resolved_music and resolved_music.startswith(('http://', 'https://')):
         ctx.log("Step 2/6: Downloading background music...")
         music_dir = os.path.join(work_dir, "audio")
         os.makedirs(music_dir, exist_ok=True)
-        ext = os.path.splitext(job_input.music_url.split('?')[0])[1] or '.mp3'
+        ext = os.path.splitext(resolved_music.split('?')[0])[1] or '.mp3'
         music_path = os.path.join(music_dir, f"music{ext}")
-        download_file(job_input.music_url, music_path, ctx)
+        download_file(resolved_music, music_path, ctx)
+    elif resolved_music and os.path.exists(resolved_music):
+        # Local file path (e.g., from random selection)
+        music_path = resolved_music
+        ctx.log(f"Step 2/6: Using local music: {os.path.basename(music_path)}")
     else:
-        ctx.log("Step 2/6: No music URL provided, skipping")
+        ctx.log("Step 2/6: No music provided, skipping")
     
     # Step 3: Download or prepare subtitles
     srt_path = None
@@ -469,7 +654,8 @@ def run_pipeline(
         subs_dir = os.path.join(work_dir, "subs")
         os.makedirs(subs_dir, exist_ok=True)
         srt_path = os.path.join(subs_dir, "subtitles.srt")
-        download_file(job_input.manual_srt_url, srt_path, ctx)
+        if job_input.manual_srt_url:
+            download_file(job_input.manual_srt_url, srt_path, ctx)
     elif job_input.subtitle_mode == SubtitleMode.NONE:
         ctx.log("Step 3/6: Subtitles disabled")
     else:
@@ -477,7 +663,7 @@ def run_pipeline(
     
     # Step 4: Generate configuration files
     ctx.log("Step 4/6: Generating pipeline configuration...")
-    clips_config = generate_clips_config(video_paths, work_dir)
+    clips_config = generate_clips_config(downloaded_clips, work_dir, ctx)
     style_config = generate_style_config(job_input, work_dir, ctx)
     
     # Step 5: Run the main pipeline
@@ -532,11 +718,14 @@ def run_pipeline(
                         audio_array = audio_array.mean(axis=1)
                     
                     transcription_config = style.get("transcription", {})
+                    whisper_language = job_input.get_whisper_language()
+                    ctx.log(f"Whisper language: {whisper_language} (geo: {job_input.geo or 'not specified'})")
+                    
                     transcribe_audio_array(
                         audio_array,
                         srt_path,
                         model_name=transcription_config.get("model", "small"),
-                        language="es",
+                        language=whisper_language,
                         initial_prompt=transcription_config.get("keywords"),
                         word_level=transcription_config.get("word_level", True),
                         max_words=transcription_config.get("max_words_per_segment", 4),
@@ -593,8 +782,27 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         
         # Validate and parse input
         ctx.log("Validating input parameters...")
+        
+        # Parse clips from new format or legacy video_urls
+        parsed_clips = None
+        if 'clips' in job_input_raw and job_input_raw['clips']:
+            parsed_clips = []
+            for clip_data in job_input_raw['clips']:
+                if isinstance(clip_data, dict):
+                    parsed_clips.append(ClipInput(
+                        url=clip_data.get('url', ''),
+                        clip_type=clip_data.get('type', 'scene'),
+                        start_time=clip_data.get('start_time'),
+                        end_time=clip_data.get('end_time')
+                    ))
+                else:
+                    raise ValueError(f"Invalid clip format: {clip_data}")
+            ctx.log(f"Parsed {len(parsed_clips)} clips from new format")
+        
         job_input = JobInput(
-            video_urls=job_input_raw.get('video_urls', []),
+            video_urls=job_input_raw.get('video_urls'),
+            clips=parsed_clips,
+            geo=job_input_raw.get('geo'),
             edit_preset=job_input_raw.get('edit_preset', 'standard_vertical'),
             music_url=job_input_raw.get('music_url'),
             music_volume=job_input_raw.get('music_volume', 0.3),
@@ -606,7 +814,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             style_overrides=job_input_raw.get('style_overrides'),
             output_filename=job_input_raw.get('output_filename')
         )
-        ctx.log("Input validation passed")
+        ctx.log(f"Input validation passed (geo: {job_input.geo or 'not specified'})")
         
         # Run pipeline
         output_path, duration = run_pipeline(job_input, ctx)
