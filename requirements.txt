@@ -1,0 +1,4 @@
+moviepy
+pysrt
+pydantic
+openai-whisper
