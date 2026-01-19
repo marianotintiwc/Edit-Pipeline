@@ -115,27 +115,110 @@ def get_ffmpeg_path() -> str:
     raise RuntimeError("FFmpeg not found. Install imageio-ffmpeg or add ffmpeg to PATH.")
 
 
-def get_rife_path() -> Optional[str]:
-    """Get RIFE executable path (optional)."""
+class RIFENotAvailableError(RuntimeError):
+    """Raised when RIFE is required but not available."""
+    pass
+
+
+class VulkanNotAvailableError(RuntimeError):
+    """Raised when Vulkan GPU support is required but not available."""
+    pass
+
+
+def get_rife_path(required: bool = False) -> Optional[str]:
+    """
+    Get RIFE executable path.
+    
+    Args:
+        required: If True, raise RIFENotAvailableError if not found
+        
+    Returns:
+        Path to rife-ncnn-vulkan binary, or None if not found and not required
+        
+    Raises:
+        RIFENotAvailableError: If required=True and RIFE is not found
+    """
     # First check PATH
     rife = shutil.which("rife-ncnn-vulkan")
     if rife:
         return rife
     
-    # Check common installation locations
+    # Check common installation locations (Linux + Windows)
     import glob
     common_paths = [
+        # Linux (Docker/RunPod)
+        "/usr/local/bin/rife-ncnn-vulkan",
+        "/opt/rife*/rife-ncnn-vulkan",
+        "/app/rife*/rife-ncnn-vulkan",
+        # Windows
         r"C:\Users\*\Desktop\ugc editor\tools\*\rife-ncnn-vulkan.exe",
         r"C:\tools\rife*\rife-ncnn-vulkan.exe",
         r"C:\Program Files\rife*\rife-ncnn-vulkan.exe",
     ]
     
     for pattern in common_paths:
+        # Direct file check for non-glob paths
+        if '*' not in pattern and os.path.isfile(pattern):
+            return pattern
+        # Glob for patterns with wildcards
         matches = glob.glob(pattern)
         if matches:
             return matches[0]
     
+    if required:
+        raise RIFENotAvailableError(
+            "RIFE binary (rife-ncnn-vulkan) not found. "
+            "Ensure it's installed in /usr/local/bin or PATH. "
+            "Set enable_interpolation=false to skip frame interpolation."
+        )
+    
     return None
+
+
+def validate_vulkan_available() -> bool:
+    """
+    Check if Vulkan is available for GPU acceleration.
+    
+    Returns:
+        True if Vulkan is available, False otherwise
+    """
+    vulkaninfo = shutil.which("vulkaninfo")
+    if not vulkaninfo:
+        return False
+    
+    try:
+        result = subprocess.run(
+            [vulkaninfo, "--summary"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def validate_rife_functional(rife_path: str) -> bool:
+    """
+    Test that RIFE binary is functional.
+    
+    Args:
+        rife_path: Path to rife-ncnn-vulkan binary
+        
+    Returns:
+        True if RIFE responds to --help
+    """
+    try:
+        result = subprocess.run(
+            [rife_path, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        # RIFE may return non-zero with --help, but should produce output
+        return bool(result.stdout or result.stderr)
+    except Exception:
+        return False
 
 
 def build_filter_graph(config: Dict[str, Any]) -> str:
@@ -273,7 +356,31 @@ def build_filter_graph(config: Dict[str, Any]) -> str:
     return ";".join(filters), current_label
 
 
-def apply_postprocess(input_path: str, output_path: str, config: Dict[str, Any], verbose: bool = True) -> bool:
+def apply_postprocess(
+    input_path: str, 
+    output_path: str, 
+    config: Dict[str, Any], 
+    verbose: bool = True,
+    allow_interpolation_fallback: bool = False
+) -> bool:
+    """
+    Apply post-processing effects to video.
+    
+    Args:
+        input_path: Path to input video
+        output_path: Path for output video
+        config: Post-processing configuration dict
+        verbose: Print detailed progress
+        allow_interpolation_fallback: If False (default), raise error when RIFE fails.
+                                      If True, fall back to no interpolation.
+    
+    Returns:
+        True if successful
+        
+    Raises:
+        RIFENotAvailableError: If interpolation is enabled but RIFE is not available
+        VulkanNotAvailableError: If RIFE is needed but Vulkan is not available
+    """
     if not config.get("enabled", False):
         shutil.copy2(input_path, output_path)
         return True
@@ -288,33 +395,76 @@ def apply_postprocess(input_path: str, output_path: str, config: Dict[str, Any],
     
     # Frame interpolation workflow
     if use_interpolation:
-        rife_path = get_rife_path()
         if verbose:
-            print(f"      [DEBUG] Frame interpolation: enabled={use_interpolation}, model={interp_model}")
-            print(f"      [DEBUG] RIFE path: {rife_path}")
+            print(f"      [INFO] Frame interpolation: enabled, model={interp_model}")
         
         # Check if FILM model is requested
         if interp_model == "film":
             try:
                 return _apply_with_film(input_path, output_path, config, filter_graph, final_label, verbose)
             except Exception as e:
+                if allow_interpolation_fallback:
+                    if verbose:
+                        print(f"      [WARN] FILM failed: {e}, falling back to direct FFmpeg")
+                else:
+                    raise RuntimeError(f"FILM interpolation failed: {e}. Set allow_interpolation_fallback=True or enable_interpolation=false.")
+        
+        # RIFE interpolation (default)
+        else:
+            # Validate RIFE is available (required=True will raise if not found)
+            rife_path = get_rife_path(required=True)
+            
+            if verbose:
+                print(f"      [INFO] RIFE binary: {rife_path}")
+            
+            # Validate Vulkan is available for GPU acceleration
+            if not validate_vulkan_available():
+                if allow_interpolation_fallback:
+                    if verbose:
+                        print(f"      [WARN] Vulkan not available, skipping RIFE interpolation")
+                else:
+                    raise VulkanNotAvailableError(
+                        "Vulkan is not available for GPU acceleration. "
+                        "RIFE requires Vulkan to run. Ensure Vulkan drivers are installed "
+                        "or set enable_interpolation=false."
+                    )
+            else:
                 if verbose:
-                    print(f"      [ERROR] FILM failed: {e}, falling back to direct FFmpeg")
-        # Fall back to RIFE if available
-        elif rife_path:
+                    print(f"      [INFO] Vulkan: available")
+            
+            # Validate RIFE is functional
+            if not validate_rife_functional(rife_path):
+                if allow_interpolation_fallback:
+                    if verbose:
+                        print(f"      [WARN] RIFE binary not functional, skipping interpolation")
+                else:
+                    raise RIFENotAvailableError(
+                        f"RIFE binary at {rife_path} is not functional. "
+                        "Check installation or set enable_interpolation=false."
+                    )
+            
+            # Run RIFE interpolation
             try:
                 result = _apply_with_rife(input_path, output_path, config, filter_graph, final_label, verbose)
                 if result:
                     return result
                 else:
-                    if verbose:
-                        print(f"      [WARN] RIFE returned False, falling back to direct FFmpeg")
+                    if allow_interpolation_fallback:
+                        if verbose:
+                            print(f"      [WARN] RIFE returned False, falling back to direct FFmpeg")
+                    else:
+                        raise RIFENotAvailableError(
+                            "RIFE interpolation failed (returned False). "
+                            "Check GPU memory or set enable_interpolation=false."
+                        )
+            except (RIFENotAvailableError, VulkanNotAvailableError):
+                raise  # Re-raise our custom exceptions
             except Exception as e:
-                if verbose:
-                    print(f"      [ERROR] RIFE failed: {e}, falling back to direct FFmpeg")
-        else:
-            if verbose:
-                print(f"      [WARN] Interpolation model '{interp_model}' not available, skipping")
+                if allow_interpolation_fallback:
+                    if verbose:
+                        print(f"      [WARN] RIFE failed: {e}, falling back to direct FFmpeg")
+                else:
+                    raise RIFENotAvailableError(f"RIFE interpolation failed: {e}")
     
     # No interpolation - direct FFmpeg processing
     return _apply_direct(input_path, output_path, filter_graph, final_label, config, verbose)

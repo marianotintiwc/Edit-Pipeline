@@ -10,7 +10,14 @@ from ugc_pipeline.audio import process_audio
 from ugc_pipeline.subtitles import generate_subtitles
 from ugc_pipeline.style import load_style
 from ugc_pipeline.export import export_video
-from ugc_pipeline.postprocess import apply_postprocess
+from ugc_pipeline.postprocess import (
+    apply_postprocess,
+    RIFENotAvailableError,
+    VulkanNotAvailableError,
+    get_rife_path,
+    validate_vulkan_available,
+    validate_rife_functional
+)
 
 # FILM interpolation (optional - requires tensorflow)
 try:
@@ -25,6 +32,7 @@ except ImportError:
     FILM_AVAILABLE = False
 
 __all__ = [
+    # Core pipeline functions
     'process_clips',
     'process_project_clips', 
     'process_audio',
@@ -32,6 +40,13 @@ __all__ = [
     'load_style',
     'export_video',
     'apply_postprocess',
+    # RIFE/Vulkan validation
+    'RIFENotAvailableError',
+    'VulkanNotAvailableError',
+    'get_rife_path',
+    'validate_vulkan_available',
+    'validate_rife_functional',
+    # FILM interpolation
     'interpolate_video',
     'interpolate_video_simple',
     'apply_film_interpolation',

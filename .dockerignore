@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore - Exclude files from Docker build context
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE & Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.eggs
+*.egg-info
+.installed.cfg
+*.egg
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+.hypothesis
+
+# Virtual environments
+venv
+.venv
+env
+.env
+ENV
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Logs
+logs/
+*.log
+
+# Exports & Output
+exports/
+output/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Test assets (don't ship sample videos)
+assets/video/*.mp4
+assets/video/*.mov
+assets/audio/*.mp3
+assets/audio/*.wav
+
+# Large model files (download at runtime)
+models/
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documentation (optional - comment out if needed)
+# docs/
+# *.md
+
+# Docker files (don't need to copy these into context)
+docker-compose*.yml
+.docker/
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.circleci
+Jenkinsfile
+
+# Misc
+*.bak
+*.backup
+.env.local
+.env.*.local
