@@ -59,8 +59,9 @@ output/
 # Test assets (don't ship sample videos)
 assets/video/*.mp4
 assets/video/*.mov
-assets/audio/*.mp3
-assets/audio/*.wav
+# NOTE: Audio files ARE included for background music
+# assets/audio/*.mp3
+# assets/audio/*.wav
 
 # Large model files (download at runtime)
 models/

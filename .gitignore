@@ -1,0 +1,23 @@
+.env
+__pycache__/
+*.pyc
+logs/
+batch_logs/
+batch_temp/
+exports/
+TAP EXPORTS/
+"meli sellers exports"/
+"meli sellers exports/"
+"TEST MELI SELLERS-20260119T225157Z-1-001"/
+"TEST MELI SELLERS-20260119T225157Z-1-001.zip"
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.srt
+.tap_cache/
+.tap_temp/
+.tap_exports/
+TAP EXPORTS/
+TAP EXPORTS/**

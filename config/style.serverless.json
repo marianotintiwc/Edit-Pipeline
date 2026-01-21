@@ -44,6 +44,19 @@
     "direction": "left",
     "duration": 0.3
   },
+
+  "broll_alpha_fill": {
+    "enabled": true,
+    "blur_sigma": 8,
+    "slow_factor": 1.5,
+    "force_chroma_key": true,
+    "chroma_key_similarity": 0.08,
+     "chroma_key_blend": 0.0,
+     "auto_tune": true,
+     "auto_tune_min": 0.05,
+     "auto_tune_max": 0.30,
+     "auto_tune_step": 0.03
+  },
   
   "audio": {
     "music_volume": 0.3,
@@ -75,6 +88,7 @@
         "white_point": 1.0
       }
     },
+
     
     "chromatic_aberration": {
       "enabled": false,

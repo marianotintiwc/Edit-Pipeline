@@ -31,11 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvulkan-dev \
     vulkan-tools \
     mesa-vulkan-drivers \
-    # FFmpeg for video processing
+    # FFmpeg for video processing (replaced with NVENC-capable static build later)
     ffmpeg \
     # ImageMagick for text rendering (subtitles)
     imagemagick \
     libmagickwand-dev \
+    # Fonts for subtitles (Impact, Arial, etc.)
+    fontconfig \
+    fonts-liberation \
+    fonts-dejavu-core \
     # General utilities
     wget \
     curl \
@@ -54,12 +58,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Fix ImageMagick Policy (allow PDF/text operations)
+# Install NVENC-capable static FFmpeg build
+# ─────────────────────────────────────────────────────────────────────────────
+RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    && tar xvf ffmpeg-release-amd64-static.tar.xz \
+    && mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg \
+    && mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && rm -rf ffmpeg-*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Install Microsoft Core Fonts (Impact, Arial, etc.) via manual download
+# ─────────────────────────────────────────────────────────────────────────────
+RUN mkdir -p /tmp/fonts && cd /tmp/fonts \
+    # Download core fonts from SourceForge
+    && wget -q -O impact.exe "https://deac-fra.dl.sourceforge.net/project/corefonts/the%20fonts/final/impact32.exe" \
+    && wget -q -O arial.exe "https://deac-fra.dl.sourceforge.net/project/corefonts/the%20fonts/final/arial32.exe" \
+    # Install cabextract to extract fonts
+    && apt-get update && apt-get install -y --no-install-recommends cabextract \
+    # Extract and install fonts
+    && cabextract impact.exe && cabextract arial.exe \
+    && mkdir -p /usr/share/fonts/truetype/msttcorefonts \
+    && mv *.ttf /usr/share/fonts/truetype/msttcorefonts/ 2>/dev/null || mv *.TTF /usr/share/fonts/truetype/msttcorefonts/ 2>/dev/null || true \
+    # Clean up
+    && cd / && rm -rf /tmp/fonts \
+    && rm -rf /var/lib/apt/lists/* \
+    # Rebuild font cache
+    && fc-cache -f -v
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fix ImageMagick Policy + Create 'magick' symlink (IM6 uses 'convert', not 'magick')
 # ─────────────────────────────────────────────────────────────────────────────
 RUN if [ -f /etc/ImageMagick-6/policy.xml ]; then \
         sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml; \
         sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<policy domain="path" rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml; \
-    fi
+    fi \
+    # Create 'magick' symlink for IM6 compatibility (MoviePy looks for 'magick')
+    && if [ -f /usr/bin/convert ] && [ ! -f /usr/bin/magick ]; then \
+        ln -s /usr/bin/convert /usr/bin/magick; \
+    fi \
+    # Verify ImageMagick is working
+    && (magick -version || convert -version || echo "ImageMagick check failed")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Install RIFE (rife-ncnn-vulkan) - Pinned to release 20221029
@@ -111,53 +150,19 @@ RUN if [ -d "ugc-pipeline" ] && [ ! -d "ugc_pipeline" ]; then \
     fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pre-download Whisper Model (optional, speeds up first job)
+# Pre-download Whisper Model (speeds up first job)
 # ─────────────────────────────────────────────────────────────────────────────
-# Uncomment to pre-download model during build (adds ~1GB to image)
-# RUN python -c "import whisper; whisper.load_model('small')"
+# Pre-download "large" model to match style.json transcription config (~2.9GB)
+RUN python -c "import whisper; print('Downloading Whisper large model...'); whisper.load_model('large'); print('Whisper model cached successfully')"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Startup Validation Script
 # ─────────────────────────────────────────────────────────────────────────────
-# Create a script that validates environment at container start
-RUN echo '#!/bin/bash\n\
-echo "=== UGC Pipeline Container Startup ==="\n\
-echo "Validating environment..."\n\
-\n\
-# Check Vulkan\n\
-if command -v vulkaninfo &> /dev/null; then\n\
-    echo "✅ Vulkan: $(vulkaninfo --summary 2>&1 | grep -i gpu | head -1 || echo available)"\n\
-else\n\
-    echo "⚠️  Vulkan: vulkaninfo not found"\n\
-fi\n\
-\n\
-# Check RIFE\n\
-if command -v rife-ncnn-vulkan &> /dev/null; then\n\
-    echo "✅ RIFE: $(which rife-ncnn-vulkan)"\n\
-else\n\
-    echo "❌ RIFE: not found in PATH"\n\
-fi\n\
-\n\
-# Check FFmpeg\n\
-if command -v ffmpeg &> /dev/null; then\n\
-    echo "✅ FFmpeg: $(ffmpeg -version 2>&1 | head -1)"\n\
-else\n\
-    echo "❌ FFmpeg: not found"\n\
-fi\n\
-\n\
-# Check ImageMagick\n\
-if command -v magick &> /dev/null || command -v convert &> /dev/null; then\n\
-    echo "✅ ImageMagick: available"\n\
-else\n\
-    echo "⚠️  ImageMagick: not found"\n\
-fi\n\
-\n\
-# Check CUDA\n\
-python -c "import torch; print(f\"✅ CUDA: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"not available\"}\")" 2>/dev/null || echo "⚠️  PyTorch/CUDA check failed"\n\
-\n\
-echo "=== Starting handler ==="\n\
-exec python -u handler.py\n\
-' > /app/start.sh && chmod +x /app/start.sh
+# Copy and set up startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh && \
+    # Convert Windows line endings to Unix (just in case)
+    sed -i 's/\r$//' /app/start.sh
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Health Check (optional)

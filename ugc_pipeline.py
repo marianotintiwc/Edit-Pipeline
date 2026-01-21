@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import logging
+import json
 from datetime import datetime
 
 # Add current directory to path so we can import ugc_pipeline
@@ -125,6 +126,19 @@ def main():
     # Define defaults
     base_dir = os.path.dirname(os.path.abspath(__file__))
     
+    # For batch processing: use clips_config directory as base_dir for subtitles
+    # This ensures each project gets its own subtitle file
+    if args.clips_config and os.path.exists(args.clips_config):
+        project_dir = os.path.dirname(os.path.abspath(args.clips_config))
+        # Create subs directory in project folder
+        project_subs_dir = os.path.join(project_dir, "subs")
+        if not os.path.exists(project_subs_dir):
+            os.makedirs(project_subs_dir)
+        # Use project_dir for subtitle paths (will be set later)
+        batch_mode_dir = project_dir
+    else:
+        batch_mode_dir = None
+    
     print_status("Resolving input paths...", "PROGRESS")
     
     # Clips Config
@@ -243,6 +257,34 @@ def main():
     
     # Detect language from project folder GEO code
     transcription_language = "es"  # Default to Spanish
+
+    def infer_geo_from_text(text: str) -> str:
+        if not text:
+            return None
+        t = text.upper()
+        if "-MLB" in t:
+            return "MLB"
+        if "-MLA" in t:
+            return "MLA"
+        if "-MLM" in t:
+            return "MLM"
+        return None
+
+    def infer_geo_from_clips_config(path: str) -> str:
+        if not path or not os.path.isfile(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for clip in data.get("clips", []):
+                geo = infer_geo_from_text(clip.get("path", ""))
+                if geo:
+                    return geo
+        except Exception:
+            return None
+        return None
+
+    geo_hint = None
     if args.project:
         project_name = os.path.basename(args.project.rstrip('/'))
         if project_name.endswith("-MLB"):
@@ -254,25 +296,50 @@ def main():
         elif project_name.endswith("-MLM"):
             transcription_language = "es"
             print_status("GEO: MLM (Mexico) → Spanish", "INFO")
+    else:
+        geo_hint = (
+            infer_geo_from_text(output_path)
+            or infer_geo_from_text(clips_config_path)
+            or (infer_geo_from_text(os.path.basename(clips_config_path)) if clips_config_path else None)
+        )
+        if not geo_hint and clips_config_path:
+            if os.path.isdir(clips_config_path):
+                geo_hint = infer_geo_from_text(os.path.basename(clips_config_path))
+            else:
+                geo_hint = infer_geo_from_clips_config(clips_config_path)
+
+        if geo_hint == "MLB":
+            transcription_language = "pt"
+            print_status("GEO: MLB (Brazil) → Portuguese", "INFO")
+        elif geo_hint == "MLA":
+            transcription_language = "es"
+            print_status("GEO: MLA (Argentina) → Spanish", "INFO")
+        elif geo_hint == "MLM":
+            transcription_language = "es"
+            print_status("GEO: MLM (Mexico) → Spanish", "INFO")
     
     # Workflow:
     # 1. Check for manual override: assets/subs/subtitles.srt
     # 2. Check for existing auto-generated: assets/subs/auto_generated.srt
     # 3. Generate new: assets/subs/auto_generated.srt
     
-    manual_subs_path = os.path.join(base_dir, "assets", "subs", "subtitles.srt")
-    auto_subs_path = os.path.join(base_dir, "assets", "subs", "auto_generated.srt")
+    # Use batch_mode_dir (project folder) for batch processing, otherwise base_dir
+    subs_base_dir = batch_mode_dir if batch_mode_dir else base_dir
+    
+    manual_subs_path = os.path.join(subs_base_dir, "subs", "subtitles.srt") if batch_mode_dir else os.path.join(base_dir, "assets", "subs", "subtitles.srt")
+    auto_subs_path = os.path.join(subs_base_dir, "subs", "auto_generated.srt") if batch_mode_dir else os.path.join(base_dir, "assets", "subs", "auto_generated.srt")
     
     final_subtitles_path = None
     
+    # Always regenerate subtitles for batch processing (when clips_config is provided)
+    # This ensures each project gets fresh subtitles from its own audio
+    regenerate_subs = True  # Force regeneration for batch processing
+
     if os.path.exists(manual_subs_path):
         print_status(f"Using manual subtitles: {os.path.basename(manual_subs_path)}", "OK")
         final_subtitles_path = manual_subs_path
-    elif os.path.exists(auto_subs_path):
-        print_status(f"Using cached subtitles: {os.path.basename(auto_subs_path)}", "OK")
-        final_subtitles_path = auto_subs_path
     else:
-        print_status("No subtitles found. Generating with Whisper...", "PROGRESS")
+        print_status("Generating subtitles with Whisper...", "PROGRESS")
         try:
             from ugc_pipeline.transcription import transcribe_audio_array
             import numpy as np

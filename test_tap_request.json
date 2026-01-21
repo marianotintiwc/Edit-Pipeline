@@ -1,0 +1,36 @@
+{
+  "input": {
+    "geo": "MLB",
+    "clips": [
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs/69_tap-MLB-male/69_tap-MLB-male_scene_1_lipsync.mp4"
+      },
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs/69_tap-MLB-male/69_tap-MLB-male_scene_2_lipsync.mp4"
+      },
+      {
+        "type": "broll",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MP_SELLERS_AI_VIDEO_GENERICO_TAP_ESP_9X16.mov"
+      },
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs/69_tap-MLB-male/69_tap-MLB-male_scene_3_lipsync.mp4"
+      }
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "edit_preset": "standard_vertical",
+    "style_overrides": {
+      "endcard": {
+        "enabled": true,
+        "overlap_seconds": 0.5,
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MLB+-+Ative+com+TAP+do+Mercado+Pago.mov"
+      },
+      "transcription": {
+        "model": "large"
+      }
+    }
+  }
+}

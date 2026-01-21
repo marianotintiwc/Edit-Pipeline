@@ -186,6 +186,7 @@ class JobInput:
     rife_model: str = "rife-v4"
     style_overrides: Optional[Dict[str, Any]] = None
     output_filename: Optional[str] = None
+    output_folder: Optional[str] = None  # Custom S3 folder path (e.g., "TAP_Exports/2026-01")
     
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -301,8 +302,7 @@ def upload_to_s3(
         bucket,
         key,
         ExtraArgs={
-            'ContentType': content_type,
-            'ACL': 'public-read'
+            'ContentType': content_type
         }
     )
     
@@ -315,13 +315,86 @@ def upload_to_s3(
     return url
 
 
+def download_from_s3(
+    bucket: str,
+    key: str,
+    dest_path: str,
+    silent: bool = False
+) -> str:
+    """
+    Download a file from S3 to local path.
+    
+    Args:
+        bucket: S3 bucket name
+        key: S3 object key (path within bucket)
+        dest_path: Local destination path
+        silent: If True, suppress print output
+        
+    Returns:
+        Path to downloaded file
+    """
+    s3 = get_s3_client()
+    
+    # Ensure destination directory exists
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    
+    if not silent:
+        print(f"Downloading s3://{bucket}/{key} -> {dest_path}")
+    
+    s3.download_file(bucket, key, dest_path)
+    
+    if not silent:
+        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        print(f"Downloaded: {os.path.basename(dest_path)} ({size_mb:.1f} MB)")
+    
+    return dest_path
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # File Downloads
 # ─────────────────────────────────────────────────────────────────────────────
 
+def parse_s3_url(url: str) -> Optional[Tuple[str, str]]:
+    """
+    Parse an S3 URL to extract bucket and key.
+    
+    Supports formats:
+    - https://bucket.s3.amazonaws.com/key
+    - https://bucket.s3.region.amazonaws.com/key
+    - https://s3.region.amazonaws.com/bucket/key
+    - s3://bucket/key
+    
+    Returns:
+        Tuple of (bucket, key) or None if not an S3 URL
+    """
+    import re
+    
+    # s3:// format
+    if url.startswith('s3://'):
+        parts = url[5:].split('/', 1)
+        return (parts[0], parts[1]) if len(parts) == 2 else None
+    
+    # https://bucket.s3.amazonaws.com/key or https://bucket.s3.region.amazonaws.com/key
+    match = re.match(r'https?://([^.]+)\.s3(?:\.([a-z0-9-]+))?\.amazonaws\.com/(.+)', url)
+    if match:
+        bucket = match.group(1)
+        key = match.group(3)
+        return (bucket, key)
+    
+    # https://s3.region.amazonaws.com/bucket/key
+    match = re.match(r'https?://s3\.([a-z0-9-]+)\.amazonaws\.com/([^/]+)/(.+)', url)
+    if match:
+        bucket = match.group(2)
+        key = match.group(3)
+        return (bucket, key)
+    
+    return None
+
+
 def download_file(url: str, dest_path: str, ctx: ProcessingContext) -> str:
     """
     Download a file from URL to local path.
+    Automatically detects S3 URLs and uses authenticated boto3 download.
     
     Args:
         url: Source URL
@@ -333,6 +406,22 @@ def download_file(url: str, dest_path: str, ctx: ProcessingContext) -> str:
     """
     ctx.log(f"Downloading: {url[:80]}...")
     
+    # Check if this is an S3 URL that needs authenticated download
+    s3_info = parse_s3_url(url)
+    if s3_info:
+        bucket, key = s3_info
+        ctx.log(f"  [S3] Authenticated download from {bucket}/{key[:50]}...")
+        try:
+            s3 = get_s3_client()
+            s3.download_file(bucket, key, dest_path)
+            size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+            ctx.log(f"Downloaded: {os.path.basename(dest_path)} ({size_mb:.1f} MB)")
+            return dest_path
+        except Exception as e:
+            ctx.log(f"  [S3] Auth download failed: {e}, trying public URL...")
+            # Fall through to try as public URL
+    
+    # Try as public URL
     response = requests.get(url, stream=True, timeout=300)
     response.raise_for_status()
     
@@ -459,18 +548,18 @@ def generate_style_config(
     """
     # Base style configuration
     style = {
-        "font": "Arial-Bold",
-        "fontsize": 70,
+        "font": "Impact",
+        "fontsize": 80,
         "color": "white",
         "stroke_color": "black",
-        "stroke_width": 0,
-        "position": "center_middle",
-        "margin_bottom": 200,
+        "stroke_width": 3,
+        "position": "center_bottom",
+        "margin_bottom": 550,
         "highlight": {
             "enabled": True,
-            "color": "yellow",
-            "fontsize_multiplier": 1.1,
-            "roundness": 1.5
+            "color": "white",
+            "bg_color": "#FFE600",
+            "fontsize_multiplier": 1.0
         },
         "animation": {
             "enabled": True,
@@ -532,6 +621,20 @@ def generate_style_config(
         "audio": {
             "music_volume": job_input.music_volume,
             "loop_music": job_input.loop_music
+        },
+        "broll_alpha_fill": {
+            "enabled": True,
+            "blur_sigma": 60,
+            "slow_factor": 1.5,
+            "force_chroma_key": True,
+            "chroma_key_color": "0x1F1F1F",
+            "chroma_key_similarity": 0.01,
+            "chroma_key_blend": 0.0,
+            "edge_feather": 5,
+            "auto_tune": False,
+            "auto_tune_min": 0.05,
+            "auto_tune_max": 0.30,
+            "auto_tune_step": 0.03
         }
     }
     
@@ -742,7 +845,9 @@ def run_pipeline(
     
     # Export final video
     ctx.log("Exporting final video...")
-    export_video(video_clip, output_path, style)
+    ctx.log(f"GPU snapshot (pre-export): {get_gpu_utilization()}")
+    export_video(video_clip, output_path, style, log_func=ctx.log)
+    ctx.log(f"GPU snapshot (post-export): {get_gpu_utilization()}")
     
     # Clean up MoviePy resources
     video_clip.close()
@@ -758,6 +863,66 @@ def run_pipeline(
 # ─────────────────────────────────────────────────────────────────────────────
 # RunPod Handler
 # ─────────────────────────────────────────────────────────────────────────────
+
+def get_gpu_info() -> str:
+    """Get GPU information for diagnostics."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device_name = torch.cuda.get_device_name(0)
+            memory_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            return f"CUDA: {device_name} ({memory_total:.1f}GB)"
+        else:
+            return "CUDA: Not available"
+    except Exception as e:
+        return f"CUDA check failed: {e}"
+
+
+def get_gpu_utilization() -> str:
+    """Get GPU utilization snapshot via nvidia-smi (best-effort)."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,utilization.memory,memory.used,memory.total",
+                "--format=csv,noheader,nounits"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        output = result.stdout.strip().splitlines()
+        if output:
+            return f"GPU util={output[0]}"
+        return "GPU util=unavailable"
+    except Exception as e:
+        return f"GPU util check failed: {e}"
+
+
+def get_ffmpeg_encoder_info() -> str:
+    """Check FFmpeg encoder availability (best-effort)."""
+    try:
+        import subprocess
+        ffmpeg_cmd = "ffmpeg"
+        try:
+            import imageio_ffmpeg
+            ffmpeg_cmd = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
+
+        result = subprocess.run(
+            [ffmpeg_cmd, "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        encoders = result.stdout or ""
+        has_nvenc = "h264_nvenc" in encoders
+        return f"FFmpeg: {ffmpeg_cmd} | h264_nvenc={'YES' if has_nvenc else 'NO'}"
+    except Exception as e:
+        return f"FFmpeg encoder check failed: {e}"
+
 
 def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -779,6 +944,8 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     try:
         ctx.log(f"Starting job {job_id}")
         ctx.log(f"Work directory: {work_dir}")
+        ctx.log(f"GPU: {get_gpu_info()}")
+        ctx.log(get_ffmpeg_encoder_info())
         
         # Validate and parse input
         ctx.log("Validating input parameters...")
@@ -812,7 +979,8 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             enable_interpolation=job_input_raw.get('enable_interpolation', True),
             rife_model=job_input_raw.get('rife_model', 'rife-v4'),
             style_overrides=job_input_raw.get('style_overrides'),
-            output_filename=job_input_raw.get('output_filename')
+            output_filename=job_input_raw.get('output_filename'),
+            output_folder=job_input_raw.get('output_folder')
         )
         ctx.log(f"Input validation passed (geo: {job_input.geo or 'not specified'})")
         
@@ -822,7 +990,12 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         # Upload to S3
         ctx.log("Step 6/6: Uploading to S3...")
         bucket = os.environ.get('S3_BUCKET', 'ugc-pipeline-outputs')
-        s3_key = f"outputs/{job_id}/{os.path.basename(output_path)}"
+        
+        # Use custom output_folder if provided, otherwise default to outputs/{job_id}/
+        if job_input.output_folder:
+            s3_key = f"{job_input.output_folder.strip('/')}/{os.path.basename(output_path)}"
+        else:
+            s3_key = f"outputs/{job_id}/{os.path.basename(output_path)}"
         
         output_url = upload_to_s3(output_path, bucket, s3_key)
         ctx.log(f"Upload complete: {output_url}")
