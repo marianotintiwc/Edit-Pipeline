@@ -20,7 +20,7 @@
         "scale_end": 1.0
     },
     "transcription": {
-        "model": "medium",
+        "model": "large",
         "keywords": "UGC, TikTok, Marketing",
         "word_level": true,
         "max_words_per_segment": 2,
@@ -39,10 +39,27 @@
         "direction": "left",
         "duration": 0.4
     },
+    "broll_alpha_fill": {
+        "enabled": true,
+        "blur_sigma": 60,
+        "slow_factor": 1.5,
+        "force_chroma_key": true,
+        "chroma_key_color": "0x1F1F1F",
+        "chroma_key_similarity": 0.01,
+        "chroma_key_blend": 0.0,
+        "edge_feather": 5,
+        "auto_tune": false,
+        "auto_tune_min": 0.05,
+        "auto_tune_max": 0.30,
+        "auto_tune_step": 0.03
+    },
     "endcard": {
         "enabled": true,
         "overlap_seconds": 1.25,
-        "folder": "C:/Users/Usuario/Desktop/ugc editor/ENDCARDS",
+        "_comment": "S3-based endcards: downloaded at runtime. Set s3_bucket or use S3_BUCKET env var",
+        "s3_bucket": null,
+        "s3_prefix": "assets/endcards/",
+        "local_folder": "C:/Users/Usuario/Desktop/ugc editor/ENDCARDS",
         "files": {
             "MLA": "Endcard Meli Play 9_16 MLA.mov",
             "MLB": "Endcard Meli Play 9_16 MLB.mov",
@@ -92,6 +109,7 @@
                 "white_point": 1.0
             }
         },
+
         
         "chromatic_aberration": {
             "enabled": false,
@@ -123,7 +141,7 @@
         
         "output": {
             "crf": 23,
-            "preset": "slow"
+            "preset": "medium"
         }
     }
 }

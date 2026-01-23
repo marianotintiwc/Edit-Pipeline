@@ -1,0 +1,9 @@
+{
+  "clips": [
+    {"path": "/data/project/8_smart_2-MLB-female_scene_1_lipsync.mp4", "start": null, "end": null, "type": "scene"},
+    {"path": "/data/project/8_smart_2-MLB-female_scene_2_lipsync.mp4", "start": null, "end": null, "type": "scene"},
+    {"path": "/data/project/MPSELLERS_BROLL_1.mov", "start": null, "end": null, "type": "broll"},
+    {"path": "/data/project/8_smart_2-MLB-female_scene_3_lipsync.mp4", "start": null, "end": null, "type": "scene"},
+    {"path": "/data/project/MPSELLERS_BROLL_2.mov", "start": null, "end": null, "type": "broll"}
+  ]
+}
