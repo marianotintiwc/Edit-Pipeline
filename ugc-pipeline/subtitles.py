@@ -1,6 +1,6 @@
 import pysrt
 from moviepy.editor import TextClip, CompositeVideoClip, VideoFileClip, ImageClip
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from PIL import Image, ImageFilter
 import numpy as np
 
@@ -102,6 +102,48 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             elif t < 0.2:
                 return 1.2 - 0.2 * ((t - 0.1) / 0.1) # Back to 1.0
             return 1.0
+
+    def build_stroked_text_clip(
+        txt: str,
+        font_name: str,
+        fs: float,
+        fill_color: str,
+        stroke_col: Optional[str],
+        stroke_w: float,
+        bg_color: str,
+        method: str,
+        size=None,
+        align: Optional[str] = None
+    ) -> TextClip:
+        """Render text with a clean stroke by layering stroke + fill."""
+        base_kwargs = {
+            "txt": txt,
+            "font": font_name,
+            "fontsize": fs,
+            "bg_color": bg_color,
+            "method": method,
+        }
+        if size is not None:
+            base_kwargs["size"] = size
+        if align is not None:
+            base_kwargs["align"] = align
+
+        if not stroke_col or stroke_w <= 0:
+            return TextClip(color=fill_color, stroke_color=None, stroke_width=0, **base_kwargs)
+
+        stroke_clip = TextClip(
+            color=stroke_col,
+            stroke_color=stroke_col,
+            stroke_width=stroke_w,
+            **base_kwargs
+        )
+        fill_clip = TextClip(
+            color=fill_color,
+            stroke_color=None,
+            stroke_width=0,
+            **base_kwargs
+        )
+        return CompositeVideoClip([stroke_clip, fill_clip.set_position("center")], size=stroke_clip.size)
     
     # ... (rest of function)
 
@@ -129,15 +171,15 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             else:
                 bg = bg_color_val # Fallback/Legacy
         
-        tc = TextClip(
+        tc = build_stroked_text_clip(
             txt,
-            font=font,
-            fontsize=fs,
-            color=c,
-            stroke_color=sc,
-            stroke_width=sw,
-            bg_color=bg,
-            method='label' # 'label' for single line parts
+            font,
+            fs,
+            c,
+            sc,
+            sw,
+            bg,
+            "label"
         )
         
         if get_bg_info and is_active:
@@ -176,8 +218,11 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         pos_x = 'center'
         if position == 'center_bottom':
             pos_y = video_h - margin_bottom - fontsize # Approximate
+        elif position == 'center':
+            pos_y = (video_h - fontsize) // 2  # Center vertically
         else:
-            pos_y = 'center'
+            # Default to center_bottom for any unknown position
+            pos_y = video_h - margin_bottom - fontsize
 
         # Create base text clip
         # Note: TextClip might fail if ImageMagick is not detected correctly.
@@ -211,14 +256,26 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 bg_color_val = None
                 
                 if is_active:
-                    bg_color_val = style_config.get("highlight", {}).get("bg_color", "#FFE600")
-                    c = style_config.get("highlight", {}).get("color", "black")
+                    highlight_cfg = style_config.get("highlight", {})
+                    bg_color_val = highlight_cfg.get("bg_color", "#FFE600")
+                    c = highlight_cfg.get("color", "black")
+                    sc = highlight_cfg.get("stroke_color", sc)
+                    sw = (highlight_cfg.get("stroke_width", sw_render))
                     if get_bg_info:
                         bg = 'transparent'
                     else:
                         bg = bg_color_val
 
-                tc = TextClip(txt, font=font, fontsize=fs, color=c, stroke_color=sc, stroke_width=sw, bg_color=bg, method='label')
+                tc = build_stroked_text_clip(
+                    txt,
+                    font,
+                    fs,
+                    c,
+                    sc,
+                    sw,
+                    bg,
+                    "label"
+                )
                 tc = tc.resize(1.0/SS)
                 
                 if get_bg_info and is_active:
@@ -244,14 +301,26 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 bg_color_val = None
                 
                 if is_active:
-                    bg_color_val = style_config.get("highlight", {}).get("bg_color", "#FFE600")
-                    c = style_config.get("highlight", {}).get("color", "black")
+                    highlight_cfg = style_config.get("highlight", {})
+                    bg_color_val = highlight_cfg.get("bg_color", "#FFE600")
+                    c = highlight_cfg.get("color", "black")
+                    sc = highlight_cfg.get("stroke_color", sc)
+                    sw = (highlight_cfg.get("stroke_width", sw_render))
                     if get_bg_info:
                         bg = 'transparent'
                     else:
                         bg = bg_color_val
 
-                tc = TextClip(txt, font=font, fontsize=fs, color=c, stroke_color=sc, stroke_width=sw, bg_color=bg, method='label')
+                tc = build_stroked_text_clip(
+                    txt,
+                    font,
+                    fs,
+                    c,
+                    sc,
+                    sw,
+                    bg,
+                    "label"
+                )
                 tc = tc.resize(1.0/SS)
                 
                 if get_bg_info and is_active:
@@ -588,15 +657,16 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
              s_clip = s_clip.set_start(start_time).set_duration(duration).set_position((s_pos_x, s_pos_y))
              subtitle_clips.append(s_clip)
 
-        txt_clip = TextClip(
+        txt_clip = build_stroked_text_clip(
             text,
-            font=font,
-            fontsize=fs_render,
-            color=color,
-            stroke_color=stroke_color,
-            stroke_width=sw_render,
-            method='caption', # 'caption' allows wrapping, 'label' is single line
-            size=(video_w * 0.9 * SS, None), # Limit width to 90% of screen (SCALED)
+            font,
+            fs_render,
+            color,
+            stroke_color,
+            sw_render,
+            'transparent',
+            'caption',
+            size=(video_w * 0.9 * SS, None),
             align='center'
         )
         # Downsample

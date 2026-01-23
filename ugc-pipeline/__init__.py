@@ -25,6 +25,7 @@ except ImportError:
     FILM_AVAILABLE = False
 
 __all__ = [
+    # Core pipeline functions
     'process_clips',
     'process_project_clips', 
     'process_audio',
@@ -32,6 +33,7 @@ __all__ = [
     'load_style',
     'export_video',
     'apply_postprocess',
+    # FILM interpolation
     'interpolate_video',
     'interpolate_video_simple',
     'apply_film_interpolation',

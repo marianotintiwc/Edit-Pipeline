@@ -3,11 +3,17 @@ import os
 import re
 import time
 import sys
-from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx, CompositeVideoClip
+import shutil
+import subprocess
+import tempfile
+from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx, CompositeVideoClip, ImageClip, afx
+import numpy as np
+from PIL import Image
 from typing import List, Dict, Any
 
 TARGET_RESOLUTION = (1080, 1920)
 TARGET_FPS = 30  # Default, can be overridden by frame_interpolation config
+TRANSITION_AUDIO_FADE = 0.05  # seconds
 
 
 def get_geo_from_project_name(project_name: str) -> str:
@@ -22,7 +28,16 @@ def get_geo_from_project_name(project_name: str) -> str:
 
 
 def get_endcard_path(style_config: Dict[str, Any], geo: str) -> str:
-    """Get the endcard video path for the given GEO."""
+    """
+    Get the endcard video path for the given GEO.
+    
+    Supports:
+    1. Direct URL (http/https) - downloaded to temp
+    2. S3 download (if s3_bucket configured or S3_BUCKET env var set)
+    3. Local folder fallback (for local development)
+    
+    Downloaded endcards are cached in /tmp/endcards/ (Docker) or temp dir (local).
+    """
     if not style_config:
         return None
     
@@ -30,16 +45,136 @@ def get_endcard_path(style_config: Dict[str, Any], geo: str) -> str:
     if not endcard_config.get("enabled", False):
         return None
     
-    folder = endcard_config.get("folder", "")
-    files = endcard_config.get("files", {})
+    # Option 1: Direct URL (highest priority)
+    direct_url = endcard_config.get("url")
+    if direct_url and direct_url.startswith(("http://", "https://")):
+        import requests
+        import hashlib
+        
+        # Cache directory for downloaded endcards
+        cache_dir = "/tmp/endcards" if os.path.exists("/tmp") else tempfile.gettempdir()
+        cache_dir = os.path.join(cache_dir, "endcards")
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Use URL hash for cache filename to handle URL-encoded names
+        url_hash = hashlib.md5(direct_url.encode()).hexdigest()[:12]
+        ext = os.path.splitext(direct_url.split('?')[0])[-1] or ".mov"
+        cached_path = os.path.join(cache_dir, f"endcard_{url_hash}{ext}")
+        
+        # Return cached file if exists
+        if os.path.exists(cached_path):
+            print(f"Using cached endcard: {cached_path}")
+            return cached_path
+        
+        # Check if this is an S3 URL - use boto3 instead of HTTP
+        if '.amazonaws.com/' in direct_url or 's3.' in direct_url:
+            try:
+                import boto3
+                import re
+                
+                # Parse S3 URL: https://s3.region.amazonaws.com/bucket/key or https://bucket.s3.region.amazonaws.com/key
+                s3_match = re.match(r'https://s3\.([^.]+)\.amazonaws\.com/([^/]+)/(.+)', direct_url)
+                if not s3_match:
+                    s3_match = re.match(r'https://([^.]+)\.s3\.([^.]+)\.amazonaws\.com/(.+)', direct_url)
+                    if s3_match:
+                        bucket = s3_match.group(1)
+                        region = s3_match.group(2)
+                        key = s3_match.group(3)
+                    else:
+                        raise ValueError(f"Could not parse S3 URL: {direct_url}")
+                else:
+                    region = s3_match.group(1)
+                    bucket = s3_match.group(2)
+                    key = s3_match.group(3)
+                
+                print(f"Downloading endcard from S3: s3://{bucket}/{key}")
+                s3 = boto3.client(
+                    's3',
+                    region_name=region,
+                    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+                )
+                s3.download_file(bucket, key, cached_path)
+                
+                size_mb = os.path.getsize(cached_path) / (1024 * 1024)
+                print(f"Endcard downloaded from S3: {os.path.basename(cached_path)} ({size_mb:.1f} MB)")
+                return cached_path
+                
+            except Exception as e:
+                print(f"Warning: Failed to download endcard from S3: {e}")
+                # Fall through to HTTP method as backup
+        
+        # Download from URL (HTTP/HTTPS)
+        try:
+            print(f"Downloading endcard from URL: {direct_url[:80]}...")
+            response = requests.get(direct_url, stream=True, timeout=120)
+            response.raise_for_status()
+            
+            with open(cached_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            size_mb = os.path.getsize(cached_path) / (1024 * 1024)
+            print(f"Endcard downloaded: {os.path.basename(cached_path)} ({size_mb:.1f} MB)")
+            return cached_path
+            
+        except Exception as e:
+            print(f"Warning: Failed to download endcard from URL: {e}")
+            # Fall through to other methods
     
+    # Option 2: S3 bucket + geo-based filename
+    files = endcard_config.get("files", {})
     filename = files.get(geo)
     if not filename:
         return None
     
-    path = os.path.join(folder, filename)
-    if os.path.exists(path):
-        return path
+    # Try S3 first (for Docker/RunPod)
+    s3_bucket = endcard_config.get("s3_bucket") or os.environ.get("S3_BUCKET")
+    s3_prefix = endcard_config.get("s3_prefix", "assets/endcards/")
+    
+    if s3_bucket:
+        # Cache directory for downloaded endcards
+        cache_dir = "/tmp/endcards" if os.path.exists("/tmp") else tempfile.gettempdir()
+        cache_dir = os.path.join(cache_dir, "endcards")
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        cached_path = os.path.join(cache_dir, filename)
+        
+        # Return cached file if exists
+        if os.path.exists(cached_path):
+            print(f"Using cached endcard: {cached_path}")
+            return cached_path
+        
+        # Download from S3
+        try:
+            # Import here to avoid circular dependency
+            import boto3
+            s3_key = f"{s3_prefix.rstrip('/')}/{filename}"
+            
+            print(f"Downloading endcard from S3: s3://{s3_bucket}/{s3_key}")
+            s3 = boto3.client(
+                's3',
+                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.environ.get('AWS_REGION', 'us-east-1')
+            )
+            s3.download_file(s3_bucket, s3_key, cached_path)
+            
+            size_mb = os.path.getsize(cached_path) / (1024 * 1024)
+            print(f"Endcard downloaded: {filename} ({size_mb:.1f} MB)")
+            return cached_path
+            
+        except Exception as e:
+            print(f"Warning: Failed to download endcard from S3: {e}")
+            # Fall through to local folder check
+    
+    # Fallback to local folder (for local development)
+    local_folder = endcard_config.get("local_folder") or endcard_config.get("folder", "")
+    if local_folder:
+        path = os.path.join(local_folder, filename)
+        if os.path.exists(path):
+            return path
+    
     return None
 
 
@@ -57,6 +192,368 @@ def print_clip_status(message: str, indent: int = 0):
     prefix = "  " * indent
     print(f"{prefix}→ {message}")
     sys.stdout.flush()
+
+
+def _apply_transition_audio_fades(audio_clip, clip_duration: float):
+    """Apply tiny audio fades to prevent pops at clip boundaries."""
+    if audio_clip is None or not clip_duration:
+        return audio_clip
+    fade = min(TRANSITION_AUDIO_FADE, max(0.0, clip_duration / 4.0))
+    if fade <= 0:
+        return audio_clip
+    return audio_clip.fx(afx.audio_fadein, fade).fx(afx.audio_fadeout, fade)
+
+
+def _resolve_endcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve endcard alpha-fill config with b-roll config as fallback."""
+    if not style_config:
+        return {}
+    endcard_cfg = style_config.get("endcard_alpha_fill", {}) or {}
+    broll_cfg = style_config.get("broll_alpha_fill", {}) or {}
+
+    if not endcard_cfg and broll_cfg:
+        endcard_cfg = {"enabled": broll_cfg.get("enabled", False), **broll_cfg}
+
+    # Fill missing keys from broll config
+    for key, val in broll_cfg.items():
+        endcard_cfg.setdefault(key, val)
+
+    return endcard_cfg
+
+
+def _get_ffmpeg_path() -> str:
+    """Get FFmpeg executable path."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        return ffmpeg
+
+    raise RuntimeError("FFmpeg not found. Install imageio-ffmpeg or add ffmpeg to PATH.")
+
+
+def _has_alpha_channel(video_path: str) -> bool:
+    """Detect if a video has an alpha channel using ffmpeg output parsing."""
+    if _is_image_file(video_path):
+        return _image_has_alpha(video_path)
+
+    ffmpeg = _get_ffmpeg_path()
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-i", video_path],
+            capture_output=True,
+            text=True
+        )
+        stderr = (result.stderr or "").lower()
+        return bool(re.search(r"video:.*\b(rgba|argb|bgra|abgr|yuva\w*|ya\w*)\b", stderr))
+    except Exception:
+        return False
+
+
+def _is_image_file(path: str) -> bool:
+    """Check if path is an image file (PNG/JPG/WebP/etc.)."""
+    ext = os.path.splitext(path)[1].lower()
+    return ext in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
+
+
+def _image_has_alpha(path: str) -> bool:
+    """Detect if an image has an alpha channel using PIL."""
+    try:
+        with Image.open(path) as img:
+            if img.mode in {"RGBA", "LA"}:
+                return True
+            if img.mode == "P" and "transparency" in img.info:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _load_image_clip(
+    path: str,
+    duration: float = None,
+    invert_alpha: bool | None = None,
+    auto_invert: bool = True,
+    auto_invert_threshold: float = 0.3
+) -> ImageClip:
+    """Load an image as a MoviePy ImageClip, preserving alpha as a mask."""
+    with Image.open(path) as img:
+        img_rgba = img.convert("RGBA")
+    frame = np.array(img_rgba)
+    rgb = frame[:, :, :3]
+    alpha = frame[:, :, 3] / 255.0
+
+    if invert_alpha is None and auto_invert:
+        # Heuristic: if mostly opaque with few transparent pixels, alpha may be inverted
+        transparent_ratio = float((alpha < 0.05).mean())
+        opaque_ratio = float((alpha > 0.95).mean())
+        if transparent_ratio < auto_invert_threshold and opaque_ratio > (1.0 - auto_invert_threshold):
+            invert_alpha = True
+
+    if invert_alpha:
+        alpha = 1.0 - alpha
+
+    clip = ImageClip(rgb)
+    if alpha is not None:
+        mask = ImageClip(alpha, ismask=True)
+        clip = clip.set_mask(mask)
+
+    if duration is not None:
+        clip = clip.set_duration(duration)
+
+    return clip
+
+
+def export_broll_with_alpha_debug(
+    clip,
+    output_folder: str,
+    clip_name: str,
+    sample_count: int = 5
+):
+    """Export sample frames from b-roll clip with alpha preserved as RGBA PNGs.
+    
+    Args:
+        clip: MoviePy VideoFileClip with mask
+        output_folder: Base folder for debug output (e.g., /app/exports/debug)
+        clip_name: Name for this clip's subfolder
+        sample_count: Number of sample frames to export (default 5)
+    """
+    # Create output subfolder
+    clip_folder = os.path.join(output_folder, clip_name)
+    os.makedirs(clip_folder, exist_ok=True)
+    
+    duration = clip.duration
+    fps = getattr(clip, 'fps', 30) or 30
+    
+    # Log mask status
+    if clip.mask is None:
+        print_clip_status(f"⚠️ DEBUG: clip.mask is None - NO ALPHA LOADED!", 4)
+        # Still export RGB frames for comparison
+        mask_status = "NO_MASK"
+    else:
+        # Sample mask at frame 0
+        try:
+            mask_frame = clip.mask.get_frame(0)
+            mask_min = float(mask_frame.min())
+            mask_max = float(mask_frame.max())
+            mask_avg = float(mask_frame.mean())
+            print_clip_status(f"✅ DEBUG: Mask loaded - min={mask_min:.3f}, max={mask_max:.3f}, avg={mask_avg:.3f}", 4)
+            mask_status = f"min{mask_min:.2f}_max{mask_max:.2f}_avg{mask_avg:.2f}"
+        except Exception as e:
+            print_clip_status(f"⚠️ DEBUG: Could not read mask: {e}", 4)
+            mask_status = "MASK_ERROR"
+    
+    # Calculate sample times
+    if sample_count >= int(duration * fps):
+        # Export all frames if sample_count is large
+        times = np.linspace(0, duration - 0.001, sample_count)
+    else:
+        # Evenly spaced samples
+        times = np.linspace(0, duration - 0.001, sample_count)
+    
+    print_clip_status(f"DEBUG: Exporting {len(times)} sample frames to {clip_folder}", 4)
+    
+    for i, t in enumerate(times):
+        try:
+            # Get RGB frame
+            rgb_frame = clip.get_frame(t)
+            
+            # Get alpha mask frame
+            if clip.mask is not None:
+                alpha_frame = clip.mask.get_frame(t)
+                # Handle 2D vs 3D mask array
+                if alpha_frame.ndim == 2:
+                    alpha = (alpha_frame * 255).astype(np.uint8)
+                else:
+                    alpha = (alpha_frame[:, :, 0] * 255).astype(np.uint8)
+            else:
+                # No mask - create fully opaque alpha
+                alpha = np.full(rgb_frame.shape[:2], 255, dtype=np.uint8)
+            
+            # Combine RGBA
+            rgba = np.dstack([rgb_frame.astype(np.uint8), alpha])
+            
+            # Save as PNG with alpha
+            img = Image.fromarray(rgba, 'RGBA')
+            frame_path = os.path.join(clip_folder, f"frame_{i:03d}_t{t:.2f}s.png")
+            img.save(frame_path)
+            
+        except Exception as e:
+            print_clip_status(f"DEBUG: Failed to export frame {i} at t={t:.2f}s: {e}", 4)
+    
+    # Write info file
+    info_path = os.path.join(clip_folder, "_debug_info.txt")
+    with open(info_path, "w") as f:
+        f.write(f"Clip: {clip_name}\n")
+        f.write(f"Duration: {duration:.2f}s\n")
+        f.write(f"FPS: {fps}\n")
+        f.write(f"Size: {clip.w}x{clip.h}\n")
+        f.write(f"Mask Status: {mask_status}\n")
+        f.write(f"Sample Count: {len(times)}\n")
+        f.write(f"Sample Times: {[f'{t:.2f}s' for t in times]}\n")
+    
+    print_clip_status(f"DEBUG: ✅ Exported to {clip_folder}", 4)
+
+
+def _create_blurred_slow_background(
+    source_path: str,
+    duration: float,
+    blur_sigma: float,
+    slow_factor: float,
+    temp_files: List[str]
+) -> str:
+    """Create a blurred, slowed background clip using FFmpeg."""
+    ffmpeg = _get_ffmpeg_path()
+    slow_factor = max(slow_factor, 1.0)
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(temp_fd)
+    temp_files.append(temp_path)
+
+    filter_str = f"setpts=PTS*{slow_factor},gblur=sigma={blur_sigma}"
+    cmd = [
+        ffmpeg, "-y", "-i", source_path,
+        "-vf", filter_str,
+        "-t", str(max(duration, 0.01)),
+        "-an",
+        "-c:v", "libx264",
+        "-crf", "23",
+        "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        temp_path
+    ]
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    return temp_path
+
+
+def _create_chroma_key_alpha(
+    source_path: str,
+    similarity: float,
+    blend: float,
+    temp_files: List[str],
+    hex_color: str = "0x000000",
+    edge_feather: int = 0
+) -> str:
+    """Create a video with alpha from specific color using FFmpeg colorkey.
+    
+    Args:
+        edge_feather: Blur radius for alpha channel edges (0 = no feathering, 1-5 recommended)
+    """
+    ffmpeg = _get_ffmpeg_path()
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".mov")
+    os.close(temp_fd)
+    temp_files.append(temp_path)
+
+    # Ensure hex format is correct for ffmpeg (0xRRGGBB)
+    if hex_color.startswith("#"):
+        hex_color = "0x" + hex_color[1:]
+    
+    print_clip_status(f"Chroma key color: {hex_color}, similarity: {similarity}, blend: {blend}, edge_feather: {edge_feather}", 4)
+
+    # Build filter: colorkey -> format rgba -> optional alpha edge blur
+    filter_str = f"colorkey={hex_color}:{similarity}:{blend},format=rgba"
+    
+    # Add edge feathering by blurring only the alpha channel
+    if edge_feather > 0:
+        # Split RGBA, blur alpha, merge back
+        # This softens the jagged edges of the mask
+        filter_str = (
+            f"colorkey={hex_color}:{similarity}:{blend},format=rgba,"
+            f"split=2[rgb][a];[a]alphaextract,boxblur={edge_feather}:{edge_feather}[ablur];"
+            f"[rgb][ablur]alphamerge"
+        )
+    
+    cmd = [
+        ffmpeg, "-y", "-i", source_path,
+        "-vf", filter_str,
+        "-an",
+        "-c:v", "qtrle",
+        temp_path
+    ]
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    return temp_path
+
+
+def _get_alpha_stats(video_path: str) -> Dict[str, float]:
+    """Get alpha plane signal stats from a video with alpha."""
+    ffmpeg = _get_ffmpeg_path()
+    cmd = [
+        ffmpeg, "-y", "-i", video_path,
+        "-vf", "alphaextract,signalstats,metadata=print",
+        "-f", "null", "-"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    stderr = result.stderr or ""
+
+    stats = {}
+    for line in stderr.splitlines():
+        if "lavfi.signalstats." in line:
+            try:
+                key_val = line.split("lavfi.signalstats.", 1)[1]
+                key, val = key_val.split("=", 1)
+                stats[key.strip()] = float(val.strip())
+            except Exception:
+                continue
+    return stats
+
+
+def _auto_tune_chroma_key(
+    source_path: str,
+    blend: float,
+    temp_files: List[str],
+    min_sim: float,
+    max_sim: float,
+    step: float
+) -> float:
+    """Auto-tune chroma key similarity to get both transparent and opaque alpha."""
+    sim = min_sim
+    best_sim = min_sim
+    best_score = -1.0
+
+    while sim <= max_sim + 1e-6:
+        alpha_path = _create_chroma_key_alpha(source_path, sim, blend, temp_files)
+        stats = _get_alpha_stats(alpha_path)
+        y_min = stats.get("YMIN")
+        y_max = stats.get("YMAX")
+        y_avg = stats.get("YAVG")
+
+        score = -1.0
+        if y_min is not None and y_max is not None and y_avg is not None:
+            # Prefer a wide alpha range (some transparent + some opaque)
+            score = (y_max - y_min) - abs(127.5 - y_avg)
+        if score > best_score:
+            best_score = score
+            best_sim = sim
+
+        # Good enough if we have both transparent and opaque areas
+        if y_min is not None and y_max is not None and y_min <= 5 and y_max >= 200:
+            return sim
+
+        sim += step
+
+    return best_sim
+
+
+def _resize_to_target(clip: VideoFileClip) -> VideoFileClip:
+    """Resize/crop clip to 9:16 (1080x1920)."""
+    target_ratio = TARGET_RESOLUTION[0] / TARGET_RESOLUTION[1]
+    clip_ratio = clip.w / clip.h
+
+    if clip_ratio > target_ratio:
+        clip = clip.resize(height=TARGET_RESOLUTION[1])
+        clip = clip.crop(x1=clip.w/2 - TARGET_RESOLUTION[0]/2,
+                         x2=clip.w/2 + TARGET_RESOLUTION[0]/2)
+    else:
+        clip = clip.resize(width=TARGET_RESOLUTION[0])
+        clip = clip.crop(y1=clip.h/2 - TARGET_RESOLUTION[1]/2,
+                         y2=clip.h/2 + TARGET_RESOLUTION[1]/2)
+
+    return clip.resize(TARGET_RESOLUTION)
 
 def load_clips_config(path: str) -> List[Dict[str, Any]]:
     """Loads the clips configuration from a JSON file."""
@@ -102,119 +599,431 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
     Reads clips from JSON config OR directory.
     Loads videos, trims, resizes/crop to 9:16, applies transitions, and concatenates.
     """
+    start_time = time.time()
     if os.path.isdir(source):
         clips_data = get_video_files_from_dir(source)
     else:
         clips_data = load_clips_config(source)
         
     video_clips = []
+    temp_files = []
 
-    print(f"Processing {len(clips_data)} clips...")
+    alpha_fill_config = {}
+    if style_config:
+        alpha_fill_config = style_config.get("broll_alpha_fill", {})
+    alpha_fill_enabled = alpha_fill_config.get("enabled", False)
+    alpha_fill_blur = alpha_fill_config.get("blur_sigma", 8)
+    alpha_fill_slow = alpha_fill_config.get("slow_factor", 1.5)
+    alpha_force_key = alpha_fill_config.get("force_chroma_key", False)
+    alpha_key_similarity = alpha_fill_config.get("chroma_key_similarity", 0.08)
+    alpha_key_blend = alpha_fill_config.get("chroma_key_blend", 0.0)
+    alpha_key_color = alpha_fill_config.get("chroma_key_color", "0x000000")
+    alpha_edge_feather = alpha_fill_config.get("edge_feather", 0)
+    alpha_auto_tune = alpha_fill_config.get("auto_tune", False)
+    alpha_tune_min = alpha_fill_config.get("auto_tune_min", 0.05)
+    alpha_tune_max = alpha_fill_config.get("auto_tune_max", 0.30)
+    alpha_tune_step = alpha_fill_config.get("auto_tune_step", 0.03)
+    image_alpha_invert = alpha_fill_config.get("invert_alpha", None)
+    image_alpha_auto_invert = alpha_fill_config.get("auto_invert_alpha", True)
+    image_alpha_auto_threshold = alpha_fill_config.get("auto_invert_alpha_threshold", 0.3)
 
-    for i, clip_info in enumerate(clips_data):
-        path = clip_info.get("path")
-        if not os.path.exists(path):
-            print(f"Warning: Clip not found at {path}. Skipping.")
-            continue
+    previous_fill_source = None
 
-        print(f"  Loading clip {i+1}: {path}")
-        clip = VideoFileClip(path)
+    target_fps = get_target_fps(style_config)
+    print(f"Processing {len(clips_data)} clips... (target_fps={target_fps})")
 
-        # 1. Trim if requested
-        start = clip_info.get("start")
-        end = clip_info.get("end")
-        if start is not None or end is not None:
-            clip = clip.subclip(start, end)
-
-        # 2. Resize/Crop to 9:16 (1080x1920)
-        # Strategy: Resize to fill height, then center crop width, OR resize to fill width, then center crop height.
-        # We want to fill the screen.
-        
-        # Calculate aspect ratios
-        target_ratio = TARGET_RESOLUTION[0] / TARGET_RESOLUTION[1]
-        clip_ratio = clip.w / clip.h
-
-        if clip_ratio > target_ratio:
-            # Clip is wider than target (e.g. 16:9 vs 9:16) -> Resize by height, crop width
-            clip = clip.resize(height=TARGET_RESOLUTION[1])
-            clip = clip.crop(x1=clip.w/2 - TARGET_RESOLUTION[0]/2, 
-                             x2=clip.w/2 + TARGET_RESOLUTION[0]/2)
+    # Separate endcard from regular clips
+    endcard_clip_info = None
+    regular_clips = []
+    for clip_info in clips_data:
+        if (clip_info.get("type") or "").lower() == "endcard":
+            endcard_clip_info = clip_info
         else:
-            # Clip is taller/narrower -> Resize by width, crop height
-            clip = clip.resize(width=TARGET_RESOLUTION[0])
-            clip = clip.crop(y1=clip.h/2 - TARGET_RESOLUTION[1]/2, 
-                             y2=clip.h/2 + TARGET_RESOLUTION[1]/2)
+            regular_clips.append(clip_info)
 
-        # Force resolution just in case of rounding errors
-        clip = clip.resize(TARGET_RESOLUTION)
-        
-        video_clips.append(clip)
+    try:
+        for i, clip_info in enumerate(regular_clips):
+            path = clip_info.get("path")
+            if not os.path.exists(path):
+                print(f"Warning: Clip not found at {path}. Skipping.")
+                continue
 
-    if not video_clips:
-        raise ValueError("No valid clips found to process.")
+            print(f"  Loading clip {i+1}: {path}")
+            clip_type = (clip_info.get("type") or "").lower()
+            is_broll = clip_type == "broll"
+            is_image = _is_image_file(path)
 
-    # Apply transitions if enabled
-    if style_config and style_config.get("transitions", {}).get("enabled", False):
-        transition_duration = style_config.get("transitions", {}).get("duration", 0.5)
-        print(f"Applying slide transitions (duration: {transition_duration}s)...")
-        
-        final_clips = []
-        current_time = 0
-        
-        for i, clip in enumerate(video_clips):
-            if i == 0:
-                # First clip: no transition in, just add it
-                final_clips.append(clip.set_start(current_time))
-                current_time += clip.duration
+            original_audio = None
+            broll_has_alpha = False
+            if is_broll and alpha_fill_enabled:
+                broll_has_alpha = _has_alpha_channel(path)
+
+            image_duration = None
+            if is_image:
+                duration = clip_info.get("duration")
+                start = clip_info.get("start")
+                end = clip_info.get("end")
+                if duration is not None:
+                    image_duration = float(duration)
+                elif start is not None or end is not None:
+                    start_val = float(start or 0.0)
+                    end_val = float(end or 0.0)
+                    if end is not None and end_val > start_val:
+                        image_duration = end_val - start_val
+                if image_duration is None:
+                    image_duration = 2.0
+
+            if is_image:
+                invert_alpha = clip_info.get("invert_alpha", image_alpha_invert)
+                clip = _load_image_clip(
+                    path,
+                    duration=image_duration,
+                    invert_alpha=invert_alpha,
+                    auto_invert=image_alpha_auto_invert,
+                    auto_invert_threshold=image_alpha_auto_threshold
+                )
+                original_audio = None
+                if is_broll and alpha_fill_enabled:
+                    broll_has_alpha = _image_has_alpha(path)
+            elif is_broll and alpha_force_key:
+                audio_source = VideoFileClip(path)
+                original_audio = audio_source.audio
+                similarity = alpha_key_similarity
+                if alpha_auto_tune:
+                    similarity = _auto_tune_chroma_key(
+                        path,
+                        alpha_key_blend,
+                        temp_files,
+                        alpha_tune_min,
+                        alpha_tune_max,
+                        alpha_tune_step
+                    )
+                alpha_path = _create_chroma_key_alpha(
+                    path,
+                    similarity,
+                    alpha_key_blend,
+                    temp_files,
+                    hex_color=alpha_key_color,
+                    edge_feather=alpha_edge_feather
+                )
+                clip = VideoFileClip(alpha_path, has_mask=True)
+            elif is_broll and broll_has_alpha:
+                clip = VideoFileClip(path, has_mask=True)
+                original_audio = clip.audio
             else:
-                # Apply slide transition
-                # Previous clip slides out to the left
-                # Current clip slides in from the right
-                
-                prev_clip = video_clips[i-1]
-                
-                # Adjust timing: overlap by transition_duration
-                current_time -= transition_duration
-                
-                # Outgoing clip: slides left
-                def make_slide_out(t):
-                    # t goes from 0 to transition_duration
-                    # x goes from 0 to -TARGET_RESOLUTION[0]
-                    if t < prev_clip.duration - transition_duration:
-                        return (0, 0)  # Static position
-                    else:
-                        progress = (t - (prev_clip.duration - transition_duration)) / transition_duration
-                        x = -TARGET_RESOLUTION[0] * progress
-                        return (x, 0)
-                
-                # Incoming clip: slides in from right
-                def make_slide_in(t):
-                    # t goes from 0 to transition_duration
-                    # x goes from +TARGET_RESOLUTION[0] to 0
-                    if t < transition_duration:
-                        progress = t / transition_duration
-                        x = TARGET_RESOLUTION[0] * (1 - progress)
-                        return (x, 0)
-                    else:
-                        return (0, 0)  # Static position
-                
-                # Note: We already added prev_clip in the previous iteration
-                # So we just add the current clip with slide-in animation
-                clip_with_anim = clip.set_position(make_slide_in).set_start(current_time)
-                final_clips.append(clip_with_anim)
-                
-                current_time += clip.duration
+                clip = VideoFileClip(path)
+                original_audio = clip.audio
+
+            # DEBUG: Export b-roll with alpha for inspection
+            if is_broll and (broll_has_alpha or alpha_force_key):
+                debug_folder = "/app/exports/debug"
+                os.makedirs(debug_folder, exist_ok=True)
+                clip_basename = os.path.splitext(os.path.basename(path))[0]
+                print_clip_status(f"DEBUG: Exporting alpha frames for {clip_basename}...", 3)
+                export_broll_with_alpha_debug(
+                    clip,
+                    debug_folder,
+                    clip_basename,
+                    sample_count=5
+                )
+
+            # 1. Trim if requested (skip for static images)
+            start = clip_info.get("start")
+            end = clip_info.get("end")
+            if (start is not None or end is not None) and not is_image:
+                clip = clip.subclip(start, end)
+
+            # 2. Resize/Crop to 9:16 (1080x1920)
+            if is_broll and (broll_has_alpha or alpha_force_key) and alpha_fill_enabled:
+                if previous_fill_source:
+                    bg_path = _create_blurred_slow_background(
+                        previous_fill_source,
+                        clip.duration,
+                        alpha_fill_blur,
+                        alpha_fill_slow,
+                        temp_files
+                    )
+                    bg_clip = VideoFileClip(bg_path).without_audio()
+                    bg_clip = _resize_to_target(bg_clip)
+                    clip = _resize_to_target(clip)
+                    clip = CompositeVideoClip(
+                        [bg_clip, clip.set_position("center")],
+                        size=TARGET_RESOLUTION
+                    ).set_duration(clip.duration)
+                    clip = clip.set_audio(original_audio)
+                else:
+                    clip = _resize_to_target(clip)
+            else:
+                clip = _resize_to_target(clip)
+
+            # Always apply tiny audio fades to avoid pops at transitions
+            if clip.audio:
+                clip = clip.set_audio(_apply_transition_audio_fades(clip.audio, clip.duration))
+
+            video_clips.append(clip)
+            previous_fill_source = path
+
+        if not video_clips:
+            raise ValueError("No valid clips found to process.")
+
+        # Get endcard if enabled
+        endcard_clip = None
+        endcard_overlap = 0
         
-        # Composite all clips
-        print("Compositing clips with transitions...")
-        final_clip = CompositeVideoClip(final_clips, size=TARGET_RESOLUTION)
-        final_clip.fps = get_target_fps(style_config)
-    else:
-        print("Concatenating clips...")
-        final_clip = concatenate_videoclips(video_clips, method="compose")
-        final_clip.fps = get_target_fps(style_config)
-    
-    return final_clip
+        # First, try to load endcard from clips.json
+        if endcard_clip_info:
+            endcard_path = endcard_clip_info.get("path")
+            if endcard_path and os.path.exists(endcard_path):
+                print(f"\n  🎬 Loading endcard from clips.json...")
+                if style_config:
+                    endcard_config = style_config.get("endcard", {})
+                    endcard_overlap = endcard_config.get("overlap_seconds", 0.5)
+                    endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
+                try:
+                    endcard_alpha_config = _resolve_endcard_alpha_config(style_config) if style_config else {}
+                    endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
+                    endcard_has_alpha = _has_alpha_channel(endcard_path)
+
+                    if endcard_force_key:
+                        similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
+                        blend = endcard_alpha_config.get("chroma_key_blend", 0.0)
+                        edge_feather = endcard_alpha_config.get("edge_feather", 0)
+                        hex_color = endcard_alpha_config.get("chroma_key_color", "0x000000")
+                        print_clip_status(
+                            f"Endcard alpha-fill config: color={hex_color}, sim={similarity}, blend={blend}, blur={endcard_alpha_config.get('blur_sigma', 8)}, slow={endcard_alpha_config.get('slow_factor', 1.5)}",
+                            3
+                        )
+                        auto_tune = endcard_alpha_config.get("auto_tune", False)
+                        if auto_tune:
+                            similarity = _auto_tune_chroma_key(
+                                endcard_path,
+                                blend,
+                                temp_files,
+                                endcard_alpha_config.get("auto_tune_min", 0.05),
+                                endcard_alpha_config.get("auto_tune_max", 0.30),
+                                endcard_alpha_config.get("auto_tune_step", 0.03)
+                            )
+                        alpha_path = _create_chroma_key_alpha(
+                            endcard_path,
+                            similarity,
+                            blend,
+                            temp_files,
+                            hex_color=hex_color,
+                            edge_feather=edge_feather
+                        )
+                        endcard_raw = VideoFileClip(alpha_path, has_mask=True)
+                        endcard_has_alpha = True
+                    else:
+                        endcard_raw = VideoFileClip(endcard_path, has_mask=True)
+
+                    # Resize endcard to target resolution
+                    endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+
+                    # Apply alpha-fill background (same as b-roll) if enabled
+                    if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                        blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
+                        slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
+                        bg_path = _create_blurred_slow_background(
+                            previous_fill_source,
+                            endcard_clip.duration,
+                            blur_sigma,
+                            slow_factor,
+                            temp_files
+                        )
+                        bg_clip = VideoFileClip(bg_path).without_audio()
+                        bg_clip = _resize_to_target(bg_clip)
+                        endcard_clip = _resize_to_target(endcard_clip)
+                        endcard_clip = CompositeVideoClip(
+                            [bg_clip, endcard_clip.set_position("center")],
+                            size=TARGET_RESOLUTION
+                        ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
+                        print("     Endcard alpha-fill: enabled (b-roll style)")
+                    print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
+                    print(f"     Overlap: {endcard_overlap}s with last clip")
+                except Exception as e:
+                    print(f"     ⚠️ Failed to load endcard: {e}")
+                    endcard_clip = None
+        
+        # Fallback: try to load endcard from style config (URL-based)
+        if not endcard_clip and style_config:
+            endcard_config = style_config.get("endcard", {})
+            if endcard_config.get("enabled", False):
+                endcard_path = get_endcard_path(style_config, None)  # geo=None uses URL from style
+                if endcard_path:
+                    print(f"\n  🎬 Loading endcard from style config...")
+                    endcard_overlap = endcard_config.get("overlap_seconds", 0.5)
+                    try:
+                        endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
+                        endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
+                        endcard_has_alpha = _has_alpha_channel(endcard_path)
+
+                        if endcard_force_key:
+                            similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
+                            blend = endcard_alpha_config.get("chroma_key_blend", 0.0)
+                            edge_feather = endcard_alpha_config.get("edge_feather", 0)
+                            hex_color = endcard_alpha_config.get("chroma_key_color", "0x000000")
+                            print_clip_status(
+                                f"Endcard alpha-fill config: color={hex_color}, sim={similarity}, blend={blend}, blur={endcard_alpha_config.get('blur_sigma', 8)}, slow={endcard_alpha_config.get('slow_factor', 1.5)}",
+                                3
+                            )
+                            auto_tune = endcard_alpha_config.get("auto_tune", False)
+                            if auto_tune:
+                                similarity = _auto_tune_chroma_key(
+                                    endcard_path,
+                                    blend,
+                                    temp_files,
+                                    endcard_alpha_config.get("auto_tune_min", 0.05),
+                                    endcard_alpha_config.get("auto_tune_max", 0.30),
+                                    endcard_alpha_config.get("auto_tune_step", 0.03)
+                                )
+                            alpha_path = _create_chroma_key_alpha(
+                                endcard_path,
+                                similarity,
+                                blend,
+                                temp_files,
+                                hex_color=hex_color,
+                                edge_feather=edge_feather
+                            )
+                            endcard_raw = VideoFileClip(alpha_path, has_mask=True)
+                            endcard_has_alpha = True
+                        else:
+                            endcard_raw = VideoFileClip(endcard_path, has_mask=True)
+
+                        # Resize endcard to target resolution
+                        endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                            blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
+                            slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
+                            bg_path = _create_blurred_slow_background(
+                                previous_fill_source,
+                                endcard_clip.duration,
+                                blur_sigma,
+                                slow_factor,
+                                temp_files
+                            )
+                            bg_clip = VideoFileClip(bg_path).without_audio()
+                            bg_clip = _resize_to_target(bg_clip)
+                            endcard_clip = _resize_to_target(endcard_clip)
+                            endcard_clip = CompositeVideoClip(
+                                [bg_clip, endcard_clip.set_position("center")],
+                                size=TARGET_RESOLUTION
+                            ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
+                            print("     Endcard alpha-fill: enabled (b-roll style)")
+                        print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
+                        print(f"     Overlap: {endcard_overlap}s with last clip")
+                    except Exception as e:
+                        print(f"     ⚠️ Failed to load endcard: {e}")
+                        endcard_clip = None
+        
+        # Apply transitions if enabled
+        if style_config and style_config.get("transitions", {}).get("enabled", False):
+            transition_duration = style_config.get("transitions", {}).get("duration", 0.5)
+            print(f"Applying slide transitions (duration: {transition_duration}s)...")
+            
+            final_clips = []
+            current_time = 0
+            
+            for i, clip in enumerate(video_clips):
+                if i == 0:
+                    final_clips.append(clip.set_start(current_time))
+                    current_time += clip.duration
+                else:
+                    prev_clip = video_clips[i-1]
+                    current_time -= transition_duration
+                    
+                    def make_slide_out(t):
+                        if t < prev_clip.duration - transition_duration:
+                            return (0, 0)
+                        else:
+                            progress = (t - (prev_clip.duration - transition_duration)) / transition_duration
+                            x = -TARGET_RESOLUTION[0] * progress
+                            return (x, 0)
+                    
+                    def make_slide_in(t):
+                        if t < transition_duration:
+                            progress = t / transition_duration
+                            x = TARGET_RESOLUTION[0] * (1 - progress)
+                            return (x, 0)
+                        else:
+                            return (0, 0)
+                    
+                    clip_with_anim = clip.set_position(make_slide_in).set_start(current_time)
+                    final_clips.append(clip_with_anim)
+                    current_time += clip.duration
+            
+            # Add endcard overlay if available
+            if endcard_clip:
+                endcard_start = current_time - endcard_overlap
+                print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
+                
+                # Apply audio fadeout to the last clip to prevent audio pop
+                if final_clips and endcard_overlap > 0:
+                    last_clip = final_clips[-1]
+                    if last_clip.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        last_clip = last_clip.fx(afx.audio_fadeout, audio_fade_duration)
+                        final_clips[-1] = last_clip
+                        print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to last clip")
+                
+                # Apply fade-in effect during overlap period (video + audio)
+                if endcard_overlap > 0:
+                    endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
+                    if endcard_with_fade.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
+                    endcard_positioned = endcard_with_fade.set_start(endcard_start)
+                else:
+                    endcard_positioned = endcard_clip.set_start(endcard_start)
+                
+                final_clips.append(endcard_positioned)
+                current_time = endcard_start + endcard_clip.duration
+            
+            print("Compositing clips with transitions...")
+            final_clip = CompositeVideoClip(final_clips, size=TARGET_RESOLUTION)
+            final_clip = final_clip.set_duration(current_time)
+            final_clip.fps = get_target_fps(style_config)
+        else:
+            print("Concatenating clips...")
+            final_clip = concatenate_videoclips(video_clips, method="compose")
+            
+            # Add endcard for non-transition mode
+            if endcard_clip:
+                total_dur = final_clip.duration
+                endcard_start = total_dur - endcard_overlap
+                print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
+                
+                # Apply audio fadeout to main clip to prevent audio pop
+                if endcard_overlap > 0 and final_clip.audio:
+                    audio_fade_duration = min(endcard_overlap, 0.3)
+                    final_clip = final_clip.fx(afx.audio_fadeout, audio_fade_duration)
+                    print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to main clip")
+                
+                # Apply fade-in effect during overlap period (video + audio)
+                if endcard_overlap > 0:
+                    endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
+                    if endcard_with_fade.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
+                    endcard_positioned = endcard_with_fade.set_start(endcard_start)
+                else:
+                    endcard_positioned = endcard_clip.set_start(endcard_start)
+                
+                final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
+                final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)
+            
+            final_clip.fps = get_target_fps(style_config)
+
+        total_time = time.time() - start_time
+        print(f"✅ process_clips complete in {total_time:.1f}s")
+        return final_clip
+    finally:
+        time.sleep(0.5)
+        for temp_path in temp_files:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except:
+                pass
 
 
 def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None) -> VideoFileClip:
@@ -231,9 +1040,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
     scenes, NOT to brolls (which are already real footage).
     """
     from moviepy.editor import AudioFileClip
-    import tempfile
-    import shutil
     
+    start_time = time.time()
     project_name = os.path.basename(project_dir.rstrip('/'))
     print(f"\n  📁 Project: {project_name}")
     
@@ -243,6 +1051,21 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
         postprocess_config = style_config.get("postprocess", {})
     
     use_postprocess = postprocess_config.get("enabled", False)
+
+    alpha_fill_config = {}
+    if style_config:
+        alpha_fill_config = style_config.get("broll_alpha_fill", {})
+    alpha_fill_enabled = alpha_fill_config.get("enabled", False)
+    alpha_fill_blur = alpha_fill_config.get("blur_sigma", 8)
+    alpha_fill_slow = alpha_fill_config.get("slow_factor", 1.5)
+    alpha_force_key = alpha_fill_config.get("force_chroma_key", False)
+    alpha_key_similarity = alpha_fill_config.get("chroma_key_similarity", 0.08)
+    alpha_key_blend = alpha_fill_config.get("chroma_key_blend", 0.0)
+    alpha_key_color = alpha_fill_config.get("chroma_key_color", "0x000000")
+    alpha_auto_tune = alpha_fill_config.get("auto_tune", False)
+    alpha_tune_min = alpha_fill_config.get("auto_tune_min", 0.05)
+    alpha_tune_max = alpha_fill_config.get("auto_tune_max", 0.30)
+    alpha_tune_step = alpha_fill_config.get("auto_tune_step", 0.03)
     
     if use_postprocess:
         print("  🎨 Post-processing: ENABLED (AI scenes only)")
@@ -311,6 +1134,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
     
     video_clips = []
     temp_files = []
+    previous_fill_source = None
     total_clips = sum(1 for _, v, _, _ in clips_info if v and os.path.exists(v))
     current_clip = 0
     
@@ -329,11 +1153,63 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             
             # Load original clip first to get audio
             print_clip_status("Loading video...", 3)
-            original_clip = VideoFileClip(video_path)
-            original_audio = original_clip.audio
+            original_audio = None
+            broll_has_alpha = False
+            if is_broll and alpha_fill_enabled:
+                broll_has_alpha = _has_alpha_channel(video_path)
+                if broll_has_alpha:
+                    print_clip_status("Alpha detected (b-roll) → will fill with blurred background", 3)
+                elif alpha_force_key:
+                    print_clip_status("Forcing alpha from black (chroma key)", 3)
+
+            if is_broll and alpha_force_key:
+                audio_source = VideoFileClip(video_path)
+                original_audio = audio_source.audio
+                similarity = alpha_key_similarity
+                if alpha_auto_tune:
+                    similarity = _auto_tune_chroma_key(
+                        video_path,
+                        alpha_key_blend,
+                        temp_files,
+                        alpha_tune_min,
+                        alpha_tune_max,
+                        alpha_tune_step
+                    )
+                alpha_path = _create_chroma_key_alpha(
+                    video_path,
+                    similarity,
+                    alpha_key_blend,
+                    temp_files,
+                    hex_color=alpha_key_color,
+                    edge_feather=alpha_edge_feather
+                )
+                original_clip = VideoFileClip(alpha_path, has_mask=True)
+            elif is_broll and broll_has_alpha:
+                original_clip = VideoFileClip(video_path, has_mask=True)
+                original_audio = original_clip.audio
+            else:
+                original_clip = VideoFileClip(video_path)
+                original_audio = original_clip.audio
             print_clip_status(f"Loaded: {original_clip.duration:.2f}s @ {original_clip.fps}fps", 3)
+
+            # Tiny fades to avoid audio pops at transitions (does not affect music)
+            original_audio = _apply_transition_audio_fades(original_audio, original_clip.duration)
+            
+            # DEBUG: Export b-roll with alpha for inspection
+            if is_broll and (broll_has_alpha or alpha_force_key):
+                debug_folder = "/app/exports/debug"
+                os.makedirs(debug_folder, exist_ok=True)
+                clip_basename = os.path.splitext(os.path.basename(video_path))[0]
+                print_clip_status(f"DEBUG: Exporting alpha frames for {clip_basename}...", 3)
+                export_broll_with_alpha_debug(
+                    original_clip,
+                    debug_folder,
+                    clip_basename,
+                    sample_count=5
+                )
             
             # Apply post-processing to AI scenes BEFORE loading into MoviePy
+            source_for_fill = video_path
             if use_postprocess and not is_broll:
                 from ugc_pipeline.postprocess import apply_postprocess
                 
@@ -355,6 +1231,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     # Load processed video but keep ORIGINAL audio (to avoid sync issues)
                     processed_clip = VideoFileClip(temp_path)
                     clip = processed_clip.set_audio(original_audio)
+                    source_for_fill = temp_path
                     print_clip_status(f"Post-processed OK ({time.time() - pp_start:.1f}s)", 3)
                 else:
                     print_clip_status("Post-processing FAILED, using original", 3)
@@ -379,26 +1256,35 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             
             # Resize/Crop to 9:16 (1080x1920)
             print_clip_status(f"Resizing {clip.w}x{clip.h} → {TARGET_RESOLUTION[0]}x{TARGET_RESOLUTION[1]}", 3)
-            target_ratio = TARGET_RESOLUTION[0] / TARGET_RESOLUTION[1]
-            clip_ratio = clip.w / clip.h
 
-            if clip_ratio > target_ratio:
-                # Clip is wider than target -> Resize by height, crop width
-                clip = clip.resize(height=TARGET_RESOLUTION[1])
-                clip = clip.crop(x1=clip.w/2 - TARGET_RESOLUTION[0]/2, 
-                                 x2=clip.w/2 + TARGET_RESOLUTION[0]/2)
+            if is_broll and (broll_has_alpha or alpha_force_key) and alpha_fill_enabled:
+                if previous_fill_source:
+                    print_clip_status("Building blurred background (FFmpeg)...", 3)
+                    bg_path = _create_blurred_slow_background(
+                        previous_fill_source,
+                        clip.duration,
+                        alpha_fill_blur,
+                        alpha_fill_slow,
+                        temp_files
+                    )
+                    bg_clip = VideoFileClip(bg_path).without_audio()
+                    bg_clip = _resize_to_target(bg_clip)
+                    clip = _resize_to_target(clip)
+                    clip = CompositeVideoClip(
+                        [bg_clip, clip.set_position("center")],
+                        size=TARGET_RESOLUTION
+                    ).set_duration(clip.duration)
+                    clip = clip.set_audio(original_audio)
+                else:
+                    print_clip_status("Alpha detected but no previous clip available; using normal resize", 3)
+                    clip = _resize_to_target(clip)
             else:
-                # Clip is taller/narrower -> Resize by width, crop height
-                clip = clip.resize(width=TARGET_RESOLUTION[0])
-                clip = clip.crop(y1=clip.h/2 - TARGET_RESOLUTION[1]/2, 
-                                 y2=clip.h/2 + TARGET_RESOLUTION[1]/2)
-
-            # Force resolution just in case of rounding errors
-            clip = clip.resize(TARGET_RESOLUTION)
+                clip = _resize_to_target(clip)
             
             clip_elapsed = time.time() - clip_start_time
             print_clip_status(f"✅ Done ({clip_elapsed:.1f}s)", 3)
             video_clips.append(clip)
+            previous_fill_source = source_for_fill
         
         if not video_clips:
             raise ValueError("No valid clips found in project folder.")
@@ -416,9 +1302,62 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     print(f"\n  🎬 Loading endcard for {geo}...")
                     endcard_overlap = endcard_config.get("overlap_seconds", 1.25)
                     try:
-                        endcard_raw = VideoFileClip(endcard_path, has_mask=True)
+                        endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
+                        endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
+                        endcard_has_alpha = _has_alpha_channel(endcard_path)
+
+                        if endcard_force_key:
+                            similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
+                            blend = endcard_alpha_config.get("chroma_key_blend", 0.0)
+                            edge_feather = endcard_alpha_config.get("edge_feather", 0)
+                            hex_color = endcard_alpha_config.get("chroma_key_color", "0x000000")
+                            print_clip_status(
+                                f"Endcard alpha-fill config: color={hex_color}, sim={similarity}, blend={blend}, blur={endcard_alpha_config.get('blur_sigma', 8)}, slow={endcard_alpha_config.get('slow_factor', 1.5)}",
+                                3
+                            )
+                            auto_tune = endcard_alpha_config.get("auto_tune", False)
+                            if auto_tune:
+                                similarity = _auto_tune_chroma_key(
+                                    endcard_path,
+                                    blend,
+                                    temp_files,
+                                    endcard_alpha_config.get("auto_tune_min", 0.05),
+                                    endcard_alpha_config.get("auto_tune_max", 0.30),
+                                    endcard_alpha_config.get("auto_tune_step", 0.03)
+                                )
+                            alpha_path = _create_chroma_key_alpha(
+                                endcard_path,
+                                similarity,
+                                blend,
+                                temp_files,
+                                hex_color=hex_color,
+                                edge_feather=edge_feather
+                            )
+                            endcard_raw = VideoFileClip(alpha_path, has_mask=True)
+                            endcard_has_alpha = True
+                        else:
+                            endcard_raw = VideoFileClip(endcard_path, has_mask=True)
+
                         # Resize endcard to target resolution
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                            blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
+                            slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
+                            bg_path = _create_blurred_slow_background(
+                                previous_fill_source,
+                                endcard_clip.duration,
+                                blur_sigma,
+                                slow_factor,
+                                temp_files
+                            )
+                            bg_clip = VideoFileClip(bg_path).without_audio()
+                            bg_clip = _resize_to_target(bg_clip)
+                            endcard_clip = _resize_to_target(endcard_clip)
+                            endcard_clip = CompositeVideoClip(
+                                [bg_clip, endcard_clip.set_position("center")],
+                                size=TARGET_RESOLUTION
+                            ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
+                            print("     Endcard alpha-fill: enabled (b-roll style)")
                         print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                         print(f"     Overlap: {endcard_overlap}s before Scene 3 ends")
                     except Exception as e:
@@ -456,8 +1395,28 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             # Endcard starts (overlap_seconds) before the end of the video
             if endcard_clip:
                 endcard_start = current_time - endcard_overlap
-                print(f"     Adding endcard at t={endcard_start:.2f}s")
-                endcard_positioned = endcard_clip.set_start(endcard_start)
+                print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
+                
+                # Apply audio fadeout to the last clip (scene 3) to prevent audio pop
+                if final_clips and endcard_overlap > 0:
+                    last_clip = final_clips[-1]
+                    if last_clip.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)  # Max 0.3s audio fade
+                        last_clip = last_clip.fx(afx.audio_fadeout, audio_fade_duration)
+                        final_clips[-1] = last_clip
+                        print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to last clip")
+                
+                # Apply fade-in effect during overlap period (video + audio)
+                if endcard_overlap > 0:
+                    endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
+                    # Also fade in endcard audio to prevent pop
+                    if endcard_with_fade.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
+                    endcard_positioned = endcard_with_fade.set_start(endcard_start)
+                else:
+                    endcard_positioned = endcard_clip.set_start(endcard_start)
+                
                 final_clips.append(endcard_positioned)
                 # Extend total duration to include full endcard
                 current_time = endcard_start + endcard_clip.duration
@@ -474,8 +1433,34 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             if endcard_clip:
                 total_dur = final_clip.duration
                 endcard_start = total_dur - endcard_overlap
-                print(f"     Adding endcard at t={endcard_start:.2f}s")
-                endcard_positioned = endcard_clip.set_start(endcard_start)
+                print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
+                
+                # Apply audio fadeout to main clip (scene 3) to prevent audio pop
+                if endcard_overlap > 0 and final_clip.audio:
+                    audio_fade_duration = min(endcard_overlap, 0.3)  # Max 0.3s audio fade
+                    final_clip = final_clip.fx(afx.audio_fadeout, audio_fade_duration)
+                    print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to main clip")
+                
+                # Apply fade-in effect during overlap period
+                if endcard_overlap > 0:
+                    def fade_in_concat(get_frame, t):
+                        """Apply fade-in transparency effect"""
+                        frame = get_frame(t)
+                        if t < endcard_overlap:
+                            # Fade from transparent to opaque during overlap
+                            alpha = t / endcard_overlap
+                            return (frame * alpha).astype('uint8')
+                        return frame
+                    
+                    endcard_with_fade = endcard_clip.fl(fade_in_concat)
+                    # Also fade in endcard audio to prevent pop
+                    if endcard_with_fade.audio:
+                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
+                    endcard_positioned = endcard_with_fade.set_start(endcard_start)
+                else:
+                    endcard_positioned = endcard_clip.set_start(endcard_start)
+                
                 final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
                 final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)
             
@@ -483,6 +1468,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
         
         total_duration = sum(c.duration for c in video_clips)
         print(f"  ⏱️  Total duration: {total_duration:.2f}s")
+        print(f"✅ process_project_clips complete in {time.time() - start_time:.1f}s")
         
         return final_clip
         

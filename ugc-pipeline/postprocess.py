@@ -23,6 +23,7 @@ import subprocess
 import shutil
 import tempfile
 import logging
+import time
 from typing import Dict, Any, Optional
 
 # Default post-processing configuration
@@ -273,7 +274,24 @@ def build_filter_graph(config: Dict[str, Any]) -> str:
     return ";".join(filters), current_label
 
 
-def apply_postprocess(input_path: str, output_path: str, config: Dict[str, Any], verbose: bool = True) -> bool:
+def apply_postprocess(
+    input_path: str, 
+    output_path: str, 
+    config: Dict[str, Any], 
+    verbose: bool = True
+) -> bool:
+    """
+    Apply post-processing effects to video.
+    
+    Args:
+        input_path: Path to input video
+        output_path: Path for output video
+        config: Post-processing configuration dict
+        verbose: Print detailed progress
+    
+    Returns:
+        True if successful
+    """
     if not config.get("enabled", False):
         shutil.copy2(input_path, output_path)
         return True
@@ -282,42 +300,63 @@ def apply_postprocess(input_path: str, output_path: str, config: Dict[str, Any],
     interp_config = config.get("frame_interpolation", {})
     use_interpolation = interp_config.get("enabled", False)
     interp_model = interp_config.get("model", "rife-v4").lower()
+    start_time = time.time()
+
+    if verbose:
+        print(f"      [INFO] FFmpeg: {ffmpeg}")
+        print(
+            "      [INFO] Interpolation config: "
+            f"enabled={use_interpolation}, model={interp_model}, "
+            f"target_fps={interp_config.get('target_fps', 'n/a')}, "
+            f"gpu_id={interp_config.get('gpu_id', 'n/a')}"
+        )
     
     # 1. Build the graph
     filter_graph, final_label = build_filter_graph(config)
     
     # Frame interpolation workflow
     if use_interpolation:
-        rife_path = get_rife_path()
         if verbose:
-            print(f"      [DEBUG] Frame interpolation: enabled={use_interpolation}, model={interp_model}")
-            print(f"      [DEBUG] RIFE path: {rife_path}")
+            print(f"      [INFO] Frame interpolation: enabled, model={interp_model}")
         
         # Check if FILM model is requested
         if interp_model == "film":
             try:
-                return _apply_with_film(input_path, output_path, config, filter_graph, final_label, verbose)
+                interp_start = time.time()
+                result = _apply_with_film(input_path, output_path, config, filter_graph, final_label, verbose)
+                if verbose:
+                    print(f"      [INFO] FILM interpolation completed in {time.time() - interp_start:.1f}s")
+                return result
             except Exception as e:
                 if verbose:
-                    print(f"      [ERROR] FILM failed: {e}, falling back to direct FFmpeg")
-        # Fall back to RIFE if available
-        elif rife_path:
-            try:
-                result = _apply_with_rife(input_path, output_path, config, filter_graph, final_label, verbose)
-                if result:
-                    return result
-                else:
-                    if verbose:
-                        print(f"      [WARN] RIFE returned False, falling back to direct FFmpeg")
-            except Exception as e:
-                if verbose:
-                    print(f"      [ERROR] RIFE failed: {e}, falling back to direct FFmpeg")
+                    print(f"      [WARN] FILM failed: {e}, falling back to direct FFmpeg")
+        
+        # RIFE interpolation (default)
         else:
-            if verbose:
-                print(f"      [WARN] Interpolation model '{interp_model}' not available, skipping")
+            rife_path = get_rife_path()
+            if not rife_path:
+                if verbose:
+                    print(f"      [WARN] RIFE not found, skipping interpolation")
+            else:
+                if verbose:
+                    print(f"      [INFO] RIFE binary: {rife_path}")
+                
+                try:
+                    interp_start = time.time()
+                    result = _apply_with_rife(input_path, output_path, config, filter_graph, final_label, verbose)
+                    if result:
+                        if verbose:
+                            print(f"      [INFO] RIFE interpolation completed in {time.time() - interp_start:.1f}s")
+                        return result
+                except Exception as e:
+                    if verbose:
+                        print(f"      [WARN] RIFE failed: {e}, falling back to direct FFmpeg")
     
     # No interpolation - direct FFmpeg processing
-    return _apply_direct(input_path, output_path, filter_graph, final_label, config, verbose)
+    result = _apply_direct(input_path, output_path, filter_graph, final_label, config, verbose)
+    if verbose:
+        print(f"      [INFO] Postprocess completed in {time.time() - start_time:.1f}s")
+    return result
 
 def _apply_direct(input_path, output_path, filter_graph, final_label, config, verbose):
     ffmpeg = get_ffmpeg_path()
@@ -362,12 +401,14 @@ def _apply_with_rife(input_path, output_path, config, filter_graph, final_label,
     out_cfg = config.get("output", {})
     # Keep 60fps from RIFE (no downsampling) - was 45fps
     target_fps = rife_cfg.get("target_fps", 60)
+    gpu_id = rife_cfg.get("gpu_id", 0)
+    if verbose:
+        print(f"      [RIFE] GPU ID: {gpu_id}")
+        if str(gpu_id) == "-1":
+            print("      [WARN] RIFE set to CPU (gpu_id=-1). This will be much slower.")
     
     with tempfile.TemporaryDirectory() as tmp:
         # Step 1: Get source video info (FPS and duration)
-        probe_cmd = [
-            ffmpeg, "-i", input_path, "-f", "null", "-"
-        ]
         # Use ffprobe-style detection
         info_cmd = [
             ffmpeg, "-i", input_path
@@ -492,11 +533,6 @@ def _apply_with_film(input_path, output_path, config, filter_graph, final_label,
     - Talking head videos (lip-sync preservation)
     - Large motion scenes
     - High-quality temporal consistency
-    
-    Pipeline:
-    1. Apply FFmpeg filters first (color grading, grain, etc.)
-    2. Run FILM interpolation on filtered video
-    3. Preserve original audio exactly for lip-sync
     """
     from ugc_pipeline.film_interpolation import interpolate_video, get_video_info
     
@@ -548,15 +584,12 @@ def _apply_with_film(input_path, output_path, config, filter_graph, final_label,
                 filtered_path,
                 output_path,
                 target_fps=film_cfg.get("target_fps", 60),
-                config=film_config,
-                verbose=verbose
+                preserve_audio=True,
+                crf=out_cfg.get("crf", 18),
+                preset=out_cfg.get("preset", "slow"),
+                gpu_memory_limit=film_cfg.get("gpu_memory_limit")
             )
             return success
         except Exception as e:
             print(f"FILM interpolation error: {e}")
-            import traceback
-            traceback.print_exc()
-            # Fall back to direct processing without interpolation
-            if verbose:
-                print("  → Falling back to direct processing (no interpolation)")
-            return _apply_direct(input_path, output_path, filter_graph, final_label, config, verbose)
+            return False

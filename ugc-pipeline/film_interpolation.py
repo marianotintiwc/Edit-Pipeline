@@ -73,7 +73,7 @@ DEFAULT_CONFIG = {
     "preserve_audio": True,         # CRITICAL: Always preserve original audio
     "output_quality": {
         "crf": 18,                  # High quality (0-51, lower=better)
-        "preset": "slow",           # Encoding preset
+        "preset": "medium",         # Encoding preset (medium for balance)
         "pix_fmt": "yuv420p"
     },
     "gpu_memory_limit": None,       # Limit GPU memory (GB), None = auto
@@ -119,7 +119,9 @@ class FILMInterpolator:
                     else:
                         # Allow memory growth
                         self.tf.config.experimental.set_memory_growth(gpu, True)
-                logging.info(f"GPU configured: {len(gpus)} device(s)")
+                logical = self.tf.config.list_logical_devices('GPU')
+                names = ", ".join([d.name for d in logical]) if logical else "unknown"
+                logging.info(f"FILM GPU configured: {len(gpus)} device(s) | logical: {names}")
             except RuntimeError as e:
                 logging.warning(f"GPU config error: {e}")
     
@@ -455,6 +457,18 @@ def assemble_video(frames_dir: str, output_path: str, fps: float,
     frames = sorted([f for f in os.listdir(frames_dir) if f.endswith(".png")])
     total_frames = len(frames)
     
+    # Check if NVENC is available for GPU encoding (A100/RTX)
+    use_nvenc = False
+    try:
+        result = subprocess.run(
+            [ffmpeg, '-hide_banner', '-encoders'],
+            capture_output=True, text=True, timeout=10
+        )
+        if 'h264_nvenc' in result.stdout:
+            use_nvenc = True
+    except Exception:
+        pass
+    
     cmd = [
         ffmpeg, "-y",
         "-framerate", str(fps),
@@ -465,13 +479,34 @@ def assemble_video(frames_dir: str, output_path: str, fps: float,
     if audio_path and os.path.exists(audio_path):
         cmd.extend(["-i", audio_path])
     
-    cmd.extend([
-        "-c:v", "libx264",
-        "-crf", str(config.get("crf", 18)),
-        "-preset", config.get("preset", "slow"),
-        "-pix_fmt", config.get("pix_fmt", "yuv420p"),
-        "-movflags", "+faststart",
-    ])
+    if use_nvenc:
+        # GPU encoding with NVENC (A100/RTX) - much faster
+        encoder_name = "h264_nvenc"
+        preset_name = "p4"
+        quality_mode = "cq"
+        quality_value = str(config.get("crf", 18))
+        logging.info(f"FILM encode: encoder={encoder_name} preset={preset_name} {quality_mode}={quality_value}")
+        cmd.extend([
+            "-c:v", encoder_name,
+            "-preset", preset_name,  # NVENC preset (p1=fastest, p7=slowest, p4=balanced)
+            "-cq", quality_value,  # Constant quality mode
+            "-pix_fmt", config.get("pix_fmt", "yuv420p"),
+            "-movflags", "+faststart",
+        ])
+    else:
+        # CPU encoding fallback
+        encoder_name = "libx264"
+        preset_name = config.get("preset", "medium")
+        quality_mode = "crf"
+        quality_value = str(config.get("crf", 18))
+        logging.info(f"FILM encode: encoder={encoder_name} preset={preset_name} {quality_mode}={quality_value}")
+        cmd.extend([
+            "-c:v", encoder_name,
+            "-crf", quality_value,
+            "-preset", preset_name,
+            "-pix_fmt", config.get("pix_fmt", "yuv420p"),
+            "-movflags", "+faststart",
+        ])
     
     # Audio mapping
     if audio_path and os.path.exists(audio_path):
@@ -541,6 +576,8 @@ def interpolate_video(
             pct = (current / total) * 100
             print(f"\r  [FILM] {stage}: {current}/{total} ({pct:.1f}%)", end="", flush=True)
     
+    start_time = time.time()
+
     # ─────────────────────────────────────────────────────────────
     # Step 0: Get video info and calculate interpolation params
     # ─────────────────────────────────────────────────────────────
@@ -603,6 +640,11 @@ def interpolate_video(
         log("Loading FILM model...")
         interpolator = FILMInterpolator(cfg.get("gpu_memory_limit"))
         interpolator.load_model()
+        try:
+            gpu_list = interpolator.tf.config.list_physical_devices('GPU')
+            log(f"  FILM GPU devices: {len(gpu_list)}")
+        except Exception:
+            pass
         
         # ─────────────────────────────────────────────────────────
         # Step 3: Interpolate frames
@@ -695,7 +737,7 @@ def interpolate_video(
             file_size = os.path.getsize(output_path) / (1024 * 1024)
             log(f"  Output: {output_info['width']}x{output_info['height']} @ {output_info['fps']:.2f}fps")
             log(f"  File size: {file_size:.2f} MB")
-            log("✓ Interpolation complete!")
+            log(f"✓ Interpolation complete in {time.time() - start_time:.1f}s")
             return True
         else:
             log("✗ Failed to assemble video")
@@ -774,7 +816,7 @@ def apply_film_interpolation(
         "preserve_audio": True,
         "output_quality": {
             "crf": 18,
-            "preset": "slow"
+            "preset": "medium"
         },
         "gpu_memory_limit": config.get("gpu_memory_limit")
     }
@@ -815,9 +857,9 @@ Examples:
     parser.add_argument("--times", "-t", type=int, default=1,
                         help="Times to interpolate (1=2x, 2=4x, 3=8x)")
     parser.add_argument("--crf", type=int, default=18, help="Output quality (0-51, lower=better)")
-    parser.add_argument("--preset", default="slow", 
+    parser.add_argument("--preset", default="medium", 
                         choices=["ultrafast", "fast", "medium", "slow", "veryslow"],
-                        help="Encoding preset")
+                        help="Encoding preset (medium recommended for balance)")
     parser.add_argument("--gpu-memory", type=float, help="GPU memory limit in GB")
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
     
