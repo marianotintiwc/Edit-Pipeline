@@ -1,0 +1,126 @@
+{
+  "font": "Arial-Bold",
+  "fontsize": 70,
+  "color": "white",
+  "stroke_color": "black",
+  "stroke_width": 0,
+  "position": "center_middle",
+  "margin_bottom": 200,
+  
+  "highlight": {
+    "enabled": true,
+    "color": "yellow",
+    "fontsize_multiplier": 1.1,
+    "roundness": 1.5
+  },
+  
+  "animation": {
+    "enabled": true,
+    "type": "pop_in",
+    "duration": 0.2,
+    "scale_start": 0.5,
+    "scale_end": 1.0
+  },
+  
+  "transcription": {
+    "model": "small",
+    "keywords": "UGC, TikTok, Marketing",
+    "word_level": true,
+    "max_words_per_segment": 4,
+    "max_delay_seconds": 0.5
+  },
+  
+  "shadow": {
+    "enabled": true,
+    "color": "black",
+    "offset": 4,
+    "opacity": 0.5,
+    "blur": 3
+  },
+  
+  "transitions": {
+    "enabled": true,
+    "type": "slide",
+    "direction": "left",
+    "duration": 0.3
+  },
+
+  "broll_alpha_fill": {
+    "enabled": true,
+    "blur_sigma": 8,
+    "slow_factor": 1.5,
+    "force_chroma_key": true,
+    "chroma_key_similarity": 0.08,
+     "chroma_key_blend": 0.0,
+     "auto_tune": true,
+     "auto_tune_min": 0.05,
+     "auto_tune_max": 0.30,
+     "auto_tune_step": 0.03
+  },
+  
+  "audio": {
+    "music_volume": 0.3,
+    "loop_music": true
+  },
+  
+  "postprocess": {
+    "enabled": true,
+    
+    "frame_interpolation": {
+      "enabled": true,
+      "input_fps": 24,
+      "target_fps": 60,
+      "model": "rife-v4",
+      "gpu_id": 0
+    },
+    
+    "color_grading": {
+      "enabled": true,
+      "brightness": -0.08,
+      "contrast": 0.7,
+      "saturation": 1.0,
+      "gamma": 1.0,
+      "curves": {
+        "enabled": true,
+        "shadows_lift": 0.3,
+        "highlights_compress": 0.7,
+        "black_point": 0.0,
+        "white_point": 1.0
+      }
+    },
+
+    
+    "chromatic_aberration": {
+      "enabled": false,
+      "offset_pixels": 2
+    },
+    
+    "lens_distortion": {
+      "enabled": false,
+      "k1": -0.05
+    },
+    
+    "vignette": {
+      "enabled": true,
+      "intensity": 0.785
+    },
+    
+    "halation": {
+      "enabled": false,
+      "intensity": 0.15,
+      "radius": 5,
+      "color": "warm"
+    },
+    
+    "grain": {
+      "enabled": true,
+      "strength": 10,
+      "temporal": true
+    },
+    
+    "output": {
+      "crf": 23,
+      "preset": "slow"
+    }
+  }
+}

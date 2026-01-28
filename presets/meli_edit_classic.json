@@ -1,0 +1,121 @@
+{
+  "$schema": "MELI Edit Classic Preset",
+  "$description": "Standard MELI edit configuration: 3 scenes + B-roll + Endcard with MELI Proxima Nova font",
+  "$version": "1.0",
+  "$created": "2026-01-22",
+  
+  "preset_name": "MELI_EDIT_CLASSIC",
+  
+  "clip_order": [
+    {"position": 1, "type": "scene", "description": "Opening scene with talent"},
+    {"position": 2, "type": "scene", "description": "Middle scene with talent"},
+    {"position": 3, "type": "broll", "description": "B-roll footage (product/feature demo)"},
+    {"position": 4, "type": "scene", "description": "Closing scene with talent"},
+    {"position": 5, "type": "endcard", "description": "Brand endcard overlay (0.5s overlap)"}
+  ],
+  
+  "style_overrides": {
+    "_comment": "IMPORTANT: Font settings go at TOP LEVEL, not nested under 'subtitle'!",
+    
+    "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+    "fontsize": 60,
+    "stroke_color": "#333333",
+    "stroke_width": 10,
+    
+    "highlight": {
+      "color": "#333333",
+      "stroke_color": "#333333",
+      "stroke_width": 4
+    },
+    
+    "endcard": {
+      "enabled": true,
+      "overlap_seconds": 0.5
+    },
+    
+    "interpolation": {
+      "enabled": true,
+      "target_fps": 60,
+      "method": "RIFE"
+    },
+    
+    "postprocess": {
+      "color_grading": {
+        "enabled": false
+      }
+    },
+    
+    "transcription": {
+      "model": "large",
+      "language": "auto"
+    }
+  },
+  
+  "geo_settings": {
+    "MLB": {
+      "language": "Portuguese",
+      "whisper_lang": "pt"
+    },
+    "MLA": {
+      "language": "Spanish",
+      "whisper_lang": "es"
+    },
+    "MLC": {
+      "language": "Spanish", 
+      "whisper_lang": "es"
+    },
+    "MLM": {
+      "language": "Spanish",
+      "whisper_lang": "es"
+    }
+  },
+  
+  "audio": {
+    "music_url": "random",
+    "music_volume": 0.3,
+    "voice_preserved": true,
+    "output_codec": "aac",
+    "output_bitrate": "320k"
+  },
+  
+  "output": {
+    "format": "mp4",
+    "resolution": "1080x1920",
+    "orientation": "vertical",
+    "fps": 60
+  },
+  
+  "example_payload": {
+    "input": {
+      "geo": "MLB",
+      "clips": [
+        {"type": "scene", "url": "https://...scene_1_lipsync.mp4"},
+        {"type": "scene", "url": "https://...scene_2_lipsync.mp4"},
+        {"type": "broll", "url": "https://drive.google.com/..."},
+        {"type": "scene", "url": "https://...scene_3_lipsync.mp4"}
+      ],
+      "music_url": "random",
+      "subtitle_mode": "auto",
+      "edit_preset": "standard_vertical",
+      "style_overrides": {
+        "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+        "fontsize": 60,
+        "stroke_color": "#333333",
+        "stroke_width": 10,
+        "highlight": {
+          "color": "#333333",
+          "stroke_color": "#333333",
+          "stroke_width": 4
+        },
+        "endcard": {
+          "enabled": true,
+          "overlap_seconds": 0.5,
+          "url": "https://drive.google.com/..."
+        },
+        "interpolation": {"enabled": true, "target_fps": 60},
+        "postprocess": {"color_grading": {"enabled": false}},
+        "transcription": {"model": "large"}
+      }
+    }
+  }
+}

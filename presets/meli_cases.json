@@ -1,0 +1,202 @@
+{
+  "$schema": "MELI Edit Classic - Cases Configuration",
+  "$description": "Map of all GEO + Value Prop combinations to their B-roll and Endcard URLs",
+  "$usage": "python run_meli_edit.py --case MLB_PIX --scenes scene1.mp4 scene2.mp4 scene3.mp4",
+  
+  "base_style": {
+    "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+    "fontsize": 60,
+    "stroke_color": "#333333",
+    "stroke_width": 10,
+    "highlight": {
+      "color": "#333333",
+      "stroke_color": "#333333",
+      "stroke_width": 4
+    },
+    "endcard": {"enabled": true, "overlap_seconds": 0.5},
+    "interpolation": {"enabled": true, "target_fps": 60},
+    "postprocess": {"color_grading": {"enabled": false}},
+    "transcription": {"model": "large"}
+  },
+  
+  "cases": {
+    "MLB_TARJETA_CREDITO": {
+      "geo": "MLB",
+      "value_prop": "Tarjeta de Crédito",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1Kv1wptQV0CnAuKHXFgbH0WkglQ6e0n9V",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1PJmfXyHJ5qQsg89EuvsWZfTQ7dGrlXQH"
+    },
+    "MLB_PIX": {
+      "geo": "MLB",
+      "value_prop": "Pix",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1ABN-7qK3YWbobss6fsz_EnTHEbM0X2gt",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1OPgg8XOle3s9UnpBSJTwAyefX0MUne40"
+    },
+    "MLB_PIX_NA_CREDITO": {
+      "geo": "MLB",
+      "value_prop": "Pix na Crédito",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1ABN-7qK3YWbobss6fsz_EnTHEbM0X2gt",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1qtTS9NmfIi2ox7U16lwR70XPnM-M04OI"
+    },
+    "MLB_COFRINHOS": {
+      "geo": "MLB",
+      "value_prop": "Cofrinhos",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1m_4BD1Aa6j1b3bTpsfKhejVnsnL_AGTQ",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1-OCVDEuxrDmx6AhFZEzH2OtScodS2Fn5"
+    },
+    "MLB_PRESTAMO_PERSONAL": {
+      "geo": "MLB",
+      "value_prop": "Préstamo Personal",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1m_4BD1Aa6j1b3bTpsfKhejVnsnL_AGTQ",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1AEbLdnnlIRR3A-lGMYftH2MGyuXl-TzS"
+    },
+    "MLB_INCENTIVOS": {
+      "geo": "MLB",
+      "value_prop": "Incentivos",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1m_4BD1Aa6j1b3bTpsfKhejVnsnL_AGTQ",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1WgR5kNGfgvQFARCHrPRPo8Mz0syg3bpI"
+    },
+    "MLB_QR": {
+      "geo": "MLB",
+      "value_prop": "QR",
+      "language": "Portuguese",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1ABN-7qK3YWbobss6fsz_EnTHEbM0X2gt",
+      "endcard_url": null
+    },
+    
+    "MLA_TARJETA_DEBITO": {
+      "geo": "MLA",
+      "value_prop": "Tarjeta de Débito",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1E4AMG-67ScQuNjzsJmJrFuYxkwc99GeS",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=17Jg9Bh5P7FATYVb9qdGgrXOiY3bwUIWd"
+    },
+    "MLA_RENDIMIENTOS": {
+      "geo": "MLA",
+      "value_prop": "Rendimientos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1_LyU_XVrCD2fMdNMIpTDX2N3wE2Zebpo",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1ll6z3KvG8cN7p0-5IfQsTgBCQz4xhCVF"
+    },
+    "MLA_PRESTAMO_PERSONAL": {
+      "geo": "MLA",
+      "value_prop": "Préstamo Personal",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1TNAu48Ud1d2i1EnKDwIX7gd5m2IQxw8-"
+    },
+    "MLA_INCENTIVOS": {
+      "geo": "MLA",
+      "value_prop": "Incentivos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1pbgRIAQfXZKDPPx76tbyyz4hKBmwDM-f"
+    },
+    "MLA_SERVICIOS": {
+      "geo": "MLA",
+      "value_prop": "Servicios",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1Ws1XC-0AyvEdyZL5-yfUrzWITI2pMUSW"
+    },
+    "MLA_CUOTAS_SIN_TARJETA": {
+      "geo": "MLA",
+      "value_prop": "Cuotas Sin Tarjeta",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1twT2tOIcaFT1_xFa041yhb0FZs93uaZ3"
+    },
+    "MLA_QR": {
+      "geo": "MLA",
+      "value_prop": "QR",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1PepieZd3p1JPraQgtEuBFSqih6oQTqj7",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1XYrTPhlgFNtah4_-3u5iXqMv5on74rFQ"
+    },
+    
+    "MLC_TARJETA_DEBITO": {
+      "geo": "MLC",
+      "value_prop": "Tarjeta de Débito",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1E4AMG-67ScQuNjzsJmJrFuYxkwc99GeS",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1JQ0tJr6I8y47lse5-nlVvK0FFisgHxC_"
+    },
+    "MLC_RENDIMIENTOS": {
+      "geo": "MLC",
+      "value_prop": "Rendimientos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1_LyU_XVrCD2fMdNMIpTDX2N3wE2Zebpo",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=12K4wxci7i37Cph9bwpIOTFqHZaYX3FLH"
+    },
+    "MLC_INCENTIVOS": {
+      "geo": "MLC",
+      "value_prop": "Incentivos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1scBYb4QBIfDmJX4rSeYm60rMKY_71W4W"
+    },
+    "MLC_SERVICIOS": {
+      "geo": "MLC",
+      "value_prop": "Servicios",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1Ws1XC-0AyvEdyZL5-yfUrzWITI2pMUSW"
+    },
+    
+    "MLM_TARJETA_CREDITO": {
+      "geo": "MLM",
+      "value_prop": "Tarjeta de Crédito",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1E4AMG-67ScQuNjzsJmJrFuYxkwc99GeS",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1tAWdTfSeRcs9SZUrxDHqTc7dehJlx3VN"
+    },
+    "MLM_TARJETA_DEBITO": {
+      "geo": "MLM",
+      "value_prop": "Tarjeta de Débito",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1E4AMG-67ScQuNjzsJmJrFuYxkwc99GeS",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1nTA4Lr5hcZj3ToQk75YKx1uNxbYJ88vj"
+    },
+    "MLM_RENDIMIENTOS": {
+      "geo": "MLM",
+      "value_prop": "Rendimientos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1_LyU_XVrCD2fMdNMIpTDX2N3wE2Zebpo",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1hOA-P2lZTNvGOP0Rdm0oul-Iec5yB78M"
+    },
+    "MLM_PRESTAMO_PERSONAL": {
+      "geo": "MLM",
+      "value_prop": "Préstamo Personal",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=19nCqgQA8heH9potisKIv8CtdCBRtrra3"
+    },
+    "MLM_LUCKY_WINNER": {
+      "geo": "MLM",
+      "value_prop": "Lucky Winner",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1ONyYAdqCETU9tWkPdWBFFm4rVmI2vHuP"
+    },
+    "MLM_INCENTIVOS": {
+      "geo": "MLM",
+      "value_prop": "Incentivos",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1XxdP69DTnoppVCaGAblbNzFJqjGI3PXr"
+    },
+    "MLM_SERVICIOS": {
+      "geo": "MLM",
+      "value_prop": "Servicios",
+      "language": "Spanish",
+      "broll_url": "https://drive.google.com/uc?export=download&id=1v2UvLMLiSNPVKFA4ny63pcPiZefy-yw8",
+      "endcard_url": "https://drive.google.com/uc?export=download&id=1Ws1XC-0AyvEdyZL5-yfUrzWITI2pMUSW"
+    }
+  }
+}

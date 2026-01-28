@@ -1,0 +1,36 @@
+{
+  "$comment": "Example jobs file for run_meli_edit.py batch processing",
+  "$usage": "python run_meli_edit.py --jobs jobs_example.json --workers 3",
+  
+  "output_folder": "MELI_Exports/2026-01",
+  
+  "jobs": [
+    {
+      "case": "MLB_PIX",
+      "output_name": "project_001_pix",
+      "scenes": [
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder/scene_1_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder/scene_2_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder/scene_3_lipsync.mp4"
+      ]
+    },
+    {
+      "case": "MLB_COFRINHOS",
+      "output_name": "project_002_cofrinhos",
+      "scenes": [
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder2/scene_1_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder2/scene_2_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder2/scene_3_lipsync.mp4"
+      ]
+    },
+    {
+      "case": "MLA_INCENTIVOS",
+      "output_name": "project_003_incentivos",
+      "scenes": [
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder3/scene_1_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder3/scene_2_lipsync.mp4",
+        "https://meli-ai.filmmaker.s3.amazonaws.com/folder3/scene_3_lipsync.mp4"
+      ]
+    }
+  ]
+}
