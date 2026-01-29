@@ -178,6 +178,75 @@ style_overrides = {
 
 ---
 
+## 🌐 Uso MELI con RunPod y ugc_client
+
+### Docker Image
+
+La imagen Docker validada para presets MELI es:
+- `marianotintiwc/ugc-pipeline:1.1.1-meli` (alias: `latestv_1.01`)
+
+### Cliente Externo (ugc_client.py)
+
+Para disparar jobs MELI desde otros repos/workspaces:
+
+1. Copia `ugc_client.py` al proyecto externo
+2. Configura `RUNPOD_API_KEY` y `RUNPOD_ENDPOINT_ID`
+3. Usa el preset MELI con per-clip customization:
+
+```python
+from ugc_client import UGCPipelineClient
+
+client = UGCPipelineClient(api_key="...", endpoint_id="...")
+
+payload = {
+    "input": {
+        "geo": "MLB",
+        "clips": [
+            {"type": "scene", "url": "..."},
+            {"type": "scene", "url": "..."},
+            {
+                "type": "broll",
+                "url": "...",
+                "alpha_fill": {"enabled": True, "blur_sigma": 60}
+            },
+            {"type": "scene", "url": "...", "end_time": -0.1},
+            {
+                "type": "endcard",
+                "url": "...",
+                "overlap_seconds": 0.5,
+                "alpha_fill": {"enabled": True, "blur_sigma": 30}
+            }
+        ],
+        "music_url": "random",
+        "subtitle_mode": "auto",
+        "style_overrides": {
+            "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+            "fontsize": 60,
+            "stroke_color": "#333333",
+            "stroke_width": 10,
+            "transcription": {"model": "large"}
+        }
+    }
+}
+
+result = client.submit_job_sync(payload)
+print(result["output"]["output_url"])
+```
+
+### Prioridad de Configuración
+
+1. `clips[].alpha_fill` / `clips[].overlap_seconds` (per-clip) — **mayor prioridad**
+2. `style_overrides` en el request
+3. `style.json` global (defaults del servidor)
+
+### Referencias
+
+- **README.md** → Sección "Cliente Externo: ugc_client.py" con ejemplos completos
+- **API_DOCUMENTATION.md** → Sección "Ejemplo Completo MELI" con payload JSON detallado
+- **Helper Scripts/run_meli_edit.py** → Para casos MELI pre-configurados (batch processing)
+
+---
+
 ## 📊 Batch Processing
 
 ### Running Large Batches

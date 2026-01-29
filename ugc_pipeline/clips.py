@@ -16,6 +16,17 @@ TARGET_FPS = 30  # Default, can be overridden by frame_interpolation config
 TRANSITION_AUDIO_FADE = 0.05  # seconds
 
 
+def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep merge two dictionaries, with override taking precedence."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def get_geo_from_project_name(project_name: str) -> str:
     """Extract GEO code (MLA, MLB, MLM) from project name."""
     if project_name.endswith("-MLB"):
@@ -608,24 +619,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
     video_clips = []
     temp_files = []
 
-    alpha_fill_config = {}
-    if style_config:
-        alpha_fill_config = style_config.get("broll_alpha_fill", {})
-    alpha_fill_enabled = alpha_fill_config.get("enabled", False)
-    alpha_fill_blur = alpha_fill_config.get("blur_sigma", 8)
-    alpha_fill_slow = alpha_fill_config.get("slow_factor", 1.5)
-    alpha_force_key = alpha_fill_config.get("force_chroma_key", False)
-    alpha_key_similarity = alpha_fill_config.get("chroma_key_similarity", 0.08)
-    alpha_key_blend = alpha_fill_config.get("chroma_key_blend", 0.0)
-    alpha_key_color = alpha_fill_config.get("chroma_key_color", "0x000000")
-    alpha_edge_feather = alpha_fill_config.get("edge_feather", 0)
-    alpha_auto_tune = alpha_fill_config.get("auto_tune", False)
-    alpha_tune_min = alpha_fill_config.get("auto_tune_min", 0.05)
-    alpha_tune_max = alpha_fill_config.get("auto_tune_max", 0.30)
-    alpha_tune_step = alpha_fill_config.get("auto_tune_step", 0.03)
-    image_alpha_invert = alpha_fill_config.get("invert_alpha", None)
-    image_alpha_auto_invert = alpha_fill_config.get("auto_invert_alpha", True)
-    image_alpha_auto_threshold = alpha_fill_config.get("auto_invert_alpha_threshold", 0.3)
+    global_broll_alpha = style_config.get("broll_alpha_fill", {}) if style_config else {}
 
     previous_fill_source = None
 
@@ -652,6 +646,24 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             clip_type = (clip_info.get("type") or "").lower()
             is_broll = clip_type == "broll"
             is_image = _is_image_file(path)
+
+            clip_alpha_override = clip_info.get("alpha_fill") or {}
+            alpha_fill_config = deep_merge(global_broll_alpha, clip_alpha_override) if is_broll else {}
+            alpha_fill_enabled = alpha_fill_config.get("enabled", False)
+            alpha_fill_blur = alpha_fill_config.get("blur_sigma", 8)
+            alpha_fill_slow = alpha_fill_config.get("slow_factor", 1.5)
+            alpha_force_key = alpha_fill_config.get("force_chroma_key", False)
+            alpha_key_similarity = alpha_fill_config.get("chroma_key_similarity", 0.08)
+            alpha_key_blend = alpha_fill_config.get("chroma_key_blend", 0.0)
+            alpha_key_color = alpha_fill_config.get("chroma_key_color", "0x000000")
+            alpha_edge_feather = alpha_fill_config.get("edge_feather", 0)
+            alpha_auto_tune = alpha_fill_config.get("auto_tune", False)
+            alpha_tune_min = alpha_fill_config.get("auto_tune_min", 0.05)
+            alpha_tune_max = alpha_fill_config.get("auto_tune_max", 0.30)
+            alpha_tune_step = alpha_fill_config.get("auto_tune_step", 0.03)
+            image_alpha_invert = alpha_fill_config.get("invert_alpha", None)
+            image_alpha_auto_invert = alpha_fill_config.get("auto_invert_alpha", True)
+            image_alpha_auto_threshold = alpha_fill_config.get("auto_invert_alpha_threshold", 0.3)
 
             original_audio = None
             broll_has_alpha = False
@@ -778,9 +790,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 if style_config:
                     endcard_config = style_config.get("endcard", {})
                     endcard_overlap = endcard_config.get("overlap_seconds", 0.5)
-                    endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
+                clip_overlap = endcard_clip_info.get("overlap_seconds")
+                if clip_overlap is not None:
+                    endcard_overlap = float(clip_overlap)
                 try:
-                    endcard_alpha_config = _resolve_endcard_alpha_config(style_config) if style_config else {}
+                    base_endcard_alpha = _resolve_endcard_alpha_config(style_config) if style_config else {}
+                    endcard_alpha_override = endcard_clip_info.get("alpha_fill") or {}
+                    endcard_alpha_config = deep_merge(base_endcard_alpha, endcard_alpha_override)
                     endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
                     endcard_has_alpha = _has_alpha_channel(endcard_path)
 

@@ -19,7 +19,10 @@ Input Schema:
                 "type": "scene" | "broll" | "endcard",  # Clip type
                 "url": str,                    # Video URL (http/https)
                 "start_time": float | None,    # Optional trim start (seconds)
-                "end_time": float | None       # Optional trim end (seconds, use -0.1 for "cut 0.1s before end")
+                "end_time": float | None,      # Optional trim end (seconds, use -0.1 for "cut 0.1s before end")
+                "alpha_fill": dict | None,     # Optional per-clip override for alpha fill (broll/endcard)
+                "overlap_seconds": float | None, # Optional per-clip endcard overlap
+                "effects": dict | None         # Optional per-clip effects (future)
             }
         ],
         
@@ -126,12 +129,24 @@ class ClipInput:
     clip_type: str = "scene"  # "scene", "broll", or "endcard"
     start_time: Optional[float] = None
     end_time: Optional[float] = None  # Use negative values for "cut X seconds before end" (e.g., -0.1)
+    alpha_fill: Optional[Dict[str, Any]] = None
+    overlap_seconds: Optional[float] = None
+    effects: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if not self.url.startswith(('http://', 'https://')):
             raise ValueError(f"Clip URL must be HTTP/HTTPS, got: {self.url}")
         if self.clip_type not in ("scene", "broll", "endcard"):
             raise ValueError(f"clip_type must be 'scene', 'broll', or 'endcard', got: {self.clip_type}")
+        if self.alpha_fill is not None and not isinstance(self.alpha_fill, dict):
+            raise ValueError("alpha_fill must be an object when provided")
+        if self.effects is not None and not isinstance(self.effects, dict):
+            raise ValueError("effects must be an object when provided")
+        if self.overlap_seconds is not None:
+            if not isinstance(self.overlap_seconds, (int, float)):
+                raise ValueError("overlap_seconds must be a number when provided")
+            if self.overlap_seconds < 0:
+                raise ValueError("overlap_seconds must be >= 0 when provided")
 
 
 class Geo(str, Enum):
@@ -485,7 +500,10 @@ def download_videos(
             "path": dest,
             "type": clip.clip_type,
             "start": clip.start_time,
-            "end": clip.end_time
+            "end": clip.end_time,
+            "alpha_fill": clip.alpha_fill,
+            "overlap_seconds": clip.overlap_seconds,
+            "effects": clip.effects
         })
         ctx.log(f"  [{clip.clip_type.upper()}] {os.path.basename(dest)}")
     
@@ -532,7 +550,10 @@ def generate_clips_config(downloaded_clips: List[Dict[str, Any]], work_dir: str,
             "path": path,
             "type": clip_data.get("type", "scene"),
             "start": start,
-            "end": end
+            "end": end,
+            "alpha_fill": clip_data.get("alpha_fill"),
+            "overlap_seconds": clip_data.get("overlap_seconds"),
+            "effects": clip_data.get("effects")
         })
     
     config = {"clips": clips}
@@ -715,6 +736,112 @@ def deep_merge(base: Dict, override: Dict) -> Dict:
         else:
             result[key] = value
     return result
+
+
+VALID_INPUT_KEYS = {
+    "video_urls",
+    "clips",
+    "geo",
+    "music_url",
+    "music_volume",
+    "loop_music",
+    "subtitle_mode",
+    "manual_srt_url",
+    "edit_preset",
+    "enable_interpolation",
+    "rife_model",
+    "style_overrides",
+    "output_filename",
+    "output_folder",
+    "project_name",
+    "job_id"
+}
+
+VALID_CLIP_KEYS = {
+    "type",
+    "url",
+    "start_time",
+    "end_time",
+    "alpha_fill",
+    "overlap_seconds",
+    "effects",
+    "duration",
+    "invert_alpha"
+}
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> None:
+    """Validate payload types and log warnings for unknown fields."""
+    if not isinstance(job_input_raw, dict):
+        raise ValueError("input must be a JSON object")
+
+    unknown_top = [k for k in job_input_raw.keys() if k not in VALID_INPUT_KEYS]
+    for key in unknown_top:
+        ctx.log(f"Warning: Unknown input field '{key}' will be ignored", "WARN")
+
+    if "video_urls" in job_input_raw and job_input_raw["video_urls"] is not None:
+        if not isinstance(job_input_raw["video_urls"], list):
+            raise ValueError("video_urls must be an array of strings")
+        for url in job_input_raw["video_urls"]:
+            if not isinstance(url, str):
+                raise ValueError("video_urls must be an array of strings")
+
+    if "clips" in job_input_raw and job_input_raw["clips"] is not None:
+        if not isinstance(job_input_raw["clips"], list):
+            raise ValueError("clips must be an array of clip objects")
+        for idx, clip in enumerate(job_input_raw["clips"]):
+            if not isinstance(clip, dict):
+                raise ValueError(f"clips[{idx}] must be an object")
+            unknown_clip = [k for k in clip.keys() if k not in VALID_CLIP_KEYS]
+            for key in unknown_clip:
+                ctx.log(f"Warning: Unknown clip field '{key}' in clips[{idx}] will be ignored", "WARN")
+            if not clip.get("url") or not isinstance(clip.get("url"), str):
+                raise ValueError(f"clips[{idx}].url is required and must be a string")
+            clip_type = clip.get("type", "scene")
+            if clip_type not in ("scene", "broll", "endcard"):
+                raise ValueError(
+                    f"clips[{idx}].type must be 'scene', 'broll', or 'endcard', got: {clip_type}"
+                )
+            for key in ("start_time", "end_time"):
+                if key in clip and clip[key] is not None and not _is_number(clip[key]):
+                    raise ValueError(f"clips[{idx}].{key} must be a number or null")
+            if "overlap_seconds" in clip and clip["overlap_seconds"] is not None:
+                if not _is_number(clip["overlap_seconds"]):
+                    raise ValueError(f"clips[{idx}].overlap_seconds must be a number or null")
+                if clip["overlap_seconds"] < 0:
+                    raise ValueError(f"clips[{idx}].overlap_seconds must be >= 0")
+            if "alpha_fill" in clip and clip["alpha_fill"] is not None and not isinstance(clip["alpha_fill"], dict):
+                raise ValueError(f"clips[{idx}].alpha_fill must be an object or null")
+            if "effects" in clip and clip["effects"] is not None and not isinstance(clip["effects"], dict):
+                raise ValueError(f"clips[{idx}].effects must be an object or null")
+
+    if "music_volume" in job_input_raw and job_input_raw["music_volume"] is not None:
+        if not _is_number(job_input_raw["music_volume"]):
+            raise ValueError("music_volume must be a number")
+
+    if "loop_music" in job_input_raw and job_input_raw["loop_music"] is not None:
+        if not isinstance(job_input_raw["loop_music"], bool):
+            raise ValueError("loop_music must be a boolean")
+
+    if "enable_interpolation" in job_input_raw and job_input_raw["enable_interpolation"] is not None:
+        if not isinstance(job_input_raw["enable_interpolation"], bool):
+            raise ValueError("enable_interpolation must be a boolean")
+
+    if "subtitle_mode" in job_input_raw and job_input_raw["subtitle_mode"] is not None:
+        if job_input_raw["subtitle_mode"] not in {"auto", "manual", "none"}:
+            raise ValueError("subtitle_mode must be 'auto', 'manual', or 'none'")
+
+    if "edit_preset" in job_input_raw and job_input_raw["edit_preset"] is not None:
+        if job_input_raw["edit_preset"] not in {p.value for p in EditPreset}:
+            raise ValueError("edit_preset is not a supported preset")
+
+    if "style_overrides" in job_input_raw and job_input_raw["style_overrides"] is not None:
+        if not isinstance(job_input_raw["style_overrides"], dict):
+            raise ValueError("style_overrides must be an object")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1016,6 +1143,9 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         # Validate and parse input
         ctx.log("Validating input parameters...")
         
+        # Validate payload and warn on unknown fields
+        validate_payload(job_input_raw, ctx)
+
         # Parse clips from new format or legacy video_urls
         parsed_clips = None
         if 'clips' in job_input_raw and job_input_raw['clips']:
@@ -1026,7 +1156,10 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
                         url=clip_data.get('url', ''),
                         clip_type=clip_data.get('type', 'scene'),
                         start_time=clip_data.get('start_time'),
-                        end_time=clip_data.get('end_time')
+                        end_time=clip_data.get('end_time'),
+                        alpha_fill=clip_data.get('alpha_fill'),
+                        overlap_seconds=clip_data.get('overlap_seconds'),
+                        effects=clip_data.get('effects')
                     ))
                 else:
                     raise ValueError(f"Invalid clip format: {clip_data}")

@@ -135,7 +135,10 @@ Content-Type: application/json
   "url": "https://...",      // Required: Video URL (http/https/s3)
   "type": "scene",           // Required: "scene" or "broll"
   "start_time": 0.0,         // Optional: Trim start (seconds)
-  "end_time": 10.0           // Optional: Trim end (seconds, use negative to cut from end)
+  "end_time": 10.0,          // Optional: Trim end (seconds, use negative to cut from end)
+  "alpha_fill": {},          // Optional: Per-clip override for alpha-fill (broll/endcard)
+  "overlap_seconds": 0.5,    // Optional: Per-clip endcard overlap
+  "effects": {}              // Optional: Per-clip effects (future)
 }
 ```
 
@@ -147,6 +150,152 @@ Content-Type: application/json
 - `"end_time": 10.0` — Cut video at 10 seconds
 - `"end_time": -0.5` — Cut 0.5 seconds before the natural end
 - `"start_time": 2.0, "end_time": 8.0` — Use only seconds 2-8
+
+---
+
+## Per-Clip Customization (broll/endcard)
+
+**Priority (highest → lowest):**
+1. `clips[].alpha_fill` / `clips[].overlap_seconds`
+2. `style_overrides` in the request
+3. `style.json` defaults
+
+**Example:** b-roll con blur fuerte y endcard con overlap distinto
+
+```json
+{
+  "input": {
+    "project_name": "demo-MLA",
+    "geo": "MLA",
+    "clips": [
+      {"type": "scene", "url": "https://.../scene1.mp4"},
+      {"type": "scene", "url": "https://.../scene2.mp4"},
+      {
+        "type": "broll",
+        "url": "https://.../broll.mp4",
+        "alpha_fill": {
+          "enabled": true,
+          "blur_sigma": 60,
+          "slow_factor": 1.6
+        }
+      },
+      {"type": "scene", "url": "https://.../scene3.mp4"},
+      {
+        "type": "endcard",
+        "url": "https://.../endcard.mov",
+        "overlap_seconds": 1.25,
+        "alpha_fill": {
+          "enabled": true,
+          "blur_sigma": 30,
+          "slow_factor": 1.2
+        }
+      }
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "style_overrides": {
+      "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+      "fontsize": 60,
+      "stroke_color": "#333333",
+      "stroke_width": 10,
+      "transcription": {"model": "large"}
+    }
+  }
+}
+```
+
+---
+
+## 🎬 Ejemplo Completo MELI (3 escenas + b-roll + endcard)
+
+Payload listo para copiar que ilustra todas las opciones de customización per-clip.
+
+```json
+{
+  "input": {
+    "project_name": "campaign_MLB_cofrinhos",
+    "geo": "MLB",
+    "output_folder": "MLB_Exports/2026-01",
+    "output_filename": "cofrinhos_MELI_EDIT.mp4",
+    "clips": [
+      {
+        "type": "scene",
+        "url": "https://bucket.s3.amazonaws.com/scene_1_lipsync.mp4"
+      },
+      {
+        "type": "scene",
+        "url": "https://bucket.s3.amazonaws.com/scene_2_lipsync.mp4"
+      },
+      {
+        "type": "broll",
+        "url": "https://bucket.s3.amazonaws.com/broll_cofrinhos.mp4",
+        "alpha_fill": {
+          "enabled": true,
+          "blur_sigma": 60,
+          "slow_factor": 1.5,
+          "force_chroma_key": true,
+          "chroma_key_color": "0x1F1F1F",
+          "chroma_key_similarity": 0.01,
+          "edge_feather": 5
+        }
+      },
+      {
+        "type": "scene",
+        "url": "https://bucket.s3.amazonaws.com/scene_3_lipsync.mp4",
+        "end_time": -0.1
+      },
+      {
+        "type": "endcard",
+        "url": "https://bucket.s3.amazonaws.com/endcard_MLB.mov",
+        "overlap_seconds": 0.5,
+        "alpha_fill": {
+          "enabled": true,
+          "blur_sigma": 30,
+          "slow_factor": 1.2,
+          "force_chroma_key": true,
+          "chroma_key_color": "0x1F1F1F"
+        }
+      }
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "enable_interpolation": true,
+    "style_overrides": {
+      "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+      "fontsize": 60,
+      "stroke_color": "#333333",
+      "stroke_width": 10,
+      "highlight": {
+        "color": "#333333",
+        "stroke_color": "#333333",
+        "stroke_width": 4
+      },
+      "transcription": {"model": "large"},
+      "postprocess": {"color_grading": {"enabled": false}},
+      "endcard": {"enabled": true, "overlap_seconds": 0.5}
+    }
+  }
+}
+```
+
+### Campos alpha_fill Soportados
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Activa el efecto de fondo blur |
+| `blur_sigma` | float | `8` | Intensidad del blur de fondo |
+| `slow_factor` | float | `1.5` | Factor de slowmo del fondo (≥1.0) |
+| `force_chroma_key` | bool | `false` | Fuerza chroma key aunque el asset tenga alpha |
+| `chroma_key_color` | string | `"0x000000"` | Color a eliminar (hex) |
+| `chroma_key_similarity` | float | `0.08` | Tolerancia del chroma key |
+| `chroma_key_blend` | float | `0.0` | Blend del chroma key |
+| `edge_feather` | int | `0` | Suavizado de bordes |
+
+### Notas
+
+- **`end_time` negativo**: `-0.1` recorta 0.1s antes del final real del clip.
+- **`overlap_seconds`**: Solo aplica a clips tipo `endcard`; controla cuánto se solapa con el clip anterior.
+- **`effects`**: Campo reservado para futuras extensiones (validado pero sin impacto actual).
 
 ---
 
@@ -372,12 +521,36 @@ You can override any setting from `style.json`:
 
 ## Deployment Checklist
 
-1. ✅ Build Docker image: `docker build -t ugc-pipeline:latest .`
-2. ✅ Push to registry: `docker push your-registry/ugc-pipeline:latest`
-3. ✅ Create RunPod serverless endpoint with the image
-4. ✅ Set environment variables (AWS credentials, S3_BUCKET)
-5. ✅ Upload endcards to S3: `s3://{bucket}/assets/endcards/`
-6. ✅ Test with a simple request
+**Docker Image:** `marianotintiwc/ugc-pipeline:1.1.1-meli` (alias: `latestv_1.01`)
+
+1. ✅ Build Docker image: `docker build -t marianotintiwc/ugc-pipeline:1.1.1-meli .`
+2. ✅ Tag adicional: `docker tag marianotintiwc/ugc-pipeline:1.1.1-meli marianotintiwc/ugc-pipeline:latestv_1.01`
+3. ✅ Push to Docker Hub: `docker push marianotintiwc/ugc-pipeline:1.1.1-meli`
+4. ✅ Create RunPod serverless endpoint with `marianotintiwc/ugc-pipeline:1.1.1-meli`
+5. ✅ Set environment variables (AWS credentials, S3_BUCKET)
+6. ✅ Upload endcards to S3: `s3://{bucket}/assets/endcards/`
+7. ✅ Test with a simple request
+
+---
+
+## ugc_client.py (Cliente Externo)
+
+Para enviar jobs desde otros proyectos/workspaces, copia `ugc_client.py` a tu repo y usa:
+
+```python
+from ugc_client import UGCPipelineClient
+
+client = UGCPipelineClient(api_key="...", endpoint_id="...")
+
+# Validar payload antes de enviar
+warnings, errors = client.validate_payload(payload, strict=False)
+
+# Enviar job bloqueante
+result = client.submit_job_sync(payload)
+print(result["output"]["output_url"])
+```
+
+Ver README.md para ejemplos completos con preset MELI.
 
 ---
 

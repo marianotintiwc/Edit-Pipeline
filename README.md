@@ -303,6 +303,131 @@ escena1  → escena2  → broll1   → escena3  → broll2
 
 ---
 
+## 🐍 Cliente Externo: ugc_client.py
+
+Un cliente Python **copiable** para enviar jobs al pipeline desde otros workspaces/proyectos.
+
+### Instalación
+
+1. Copia `ugc_client.py` a tu proyecto
+2. Instala dependencias: `pip install requests`
+3. Configura variables de entorno:
+   ```bash
+   export RUNPOD_API_KEY="tu_api_key"
+   export RUNPOD_ENDPOINT_ID="tu_endpoint_id"
+   ```
+
+### Uso Básico
+
+```python
+from ugc_client import UGCPipelineClient
+
+client = UGCPipelineClient(
+    api_key="tu_api_key",
+    endpoint_id="tu_endpoint_id"
+)
+
+payload = client.build_payload({
+    "geo": "MLB",
+    "clips": [
+        {"type": "scene", "url": "https://.../scene1.mp4"},
+        {"type": "scene", "url": "https://.../scene2.mp4"},
+        {"type": "broll", "url": "https://.../broll.mp4"},
+        {"type": "scene", "url": "https://.../scene3.mp4"}
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto"
+})
+
+# Validar antes de enviar (detecta typos y campos inválidos)
+warnings, errors = client.validate_payload(payload, strict=False)
+for w in warnings:
+    print(f"⚠️ {w}")
+
+# Enviar job (bloqueante)
+result = client.submit_job_sync(payload)
+print(f"Output: {result['output']['output_url']}")
+```
+
+### Ejemplo MELI Completo (geo=MLB)
+
+```python
+from ugc_client import UGCPipelineClient
+import os
+
+client = UGCPipelineClient(
+    api_key=os.environ["RUNPOD_API_KEY"],
+    endpoint_id=os.environ["RUNPOD_ENDPOINT_ID"]
+)
+
+# Payload MELI EDIT CLASSIC con per-clip customization
+payload = {
+    "input": {
+        "project_name": "campaign_MLB_001",
+        "geo": "MLB",
+        "output_folder": "MLB_Exports/2026-01",
+        "clips": [
+            {"type": "scene", "url": "https://.../scene_1_lipsync.mp4"},
+            {"type": "scene", "url": "https://.../scene_2_lipsync.mp4"},
+            {
+                "type": "broll",
+                "url": "https://.../broll_product.mp4",
+                "alpha_fill": {
+                    "enabled": True,
+                    "blur_sigma": 60,
+                    "slow_factor": 1.5,
+                    "force_chroma_key": True,
+                    "chroma_key_color": "0x1F1F1F"
+                }
+            },
+            {"type": "scene", "url": "https://.../scene_3_lipsync.mp4", "end_time": -0.1},
+            {
+                "type": "endcard",
+                "url": "https://.../endcard_MLB.mov",
+                "overlap_seconds": 0.5,
+                "alpha_fill": {
+                    "enabled": True,
+                    "blur_sigma": 30,
+                    "slow_factor": 1.2
+                }
+            }
+        ],
+        "music_url": "random",
+        "subtitle_mode": "auto",
+        "enable_interpolation": True,
+        "style_overrides": {
+            "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+            "fontsize": 60,
+            "stroke_color": "#333333",
+            "stroke_width": 10,
+            "highlight": {"color": "#333333", "stroke_width": 4},
+            "transcription": {"model": "large"},
+            "postprocess": {"color_grading": {"enabled": False}}
+        }
+    }
+}
+
+# Validar y enviar
+warnings, _ = client.validate_payload(payload, strict=False)
+for w in warnings:
+    print(f"⚠️ {w}")
+
+result = client.submit_job_sync(payload)
+print(f"✅ Video: {result['output']['output_url']}")
+```
+
+### Métodos Disponibles
+
+| Método | Descripción |
+|--------|-------------|
+| `build_payload(input_data)` | Envuelve input en `{"input": ...}` |
+| `validate_payload(payload, strict=True)` | Valida tipos y campos; retorna `(warnings, errors)` |
+| `submit_job_sync(payload)` | Envía y espera resultado (bloqueante) |
+| `submit_job_async(payload)` | Envía y retorna `job_id` inmediatamente |
+| `get_job_status(job_id)` | Consulta estado de un job async |
+
+---
+
 ## Requirements
 
 ### Local Development
@@ -316,31 +441,52 @@ escena1  → escena2  → broll1   → escena3  → broll2
 - RunPod account with serverless access
 - AWS S3 bucket for output storage
 
+### Environment Variables
+
+| Variable | Uso | Descripción |
+|----------|-----|-------------|
+| `RUNPOD_API_KEY` | Cliente externo | API key de RunPod |
+| `RUNPOD_ENDPOINT_ID` | Cliente externo | ID del endpoint serverless |
+| `AWS_ACCESS_KEY_ID` | Handler (Docker) | Credenciales S3 |
+| `AWS_SECRET_ACCESS_KEY` | Handler (Docker) | Credenciales S3 |
+| `AWS_REGION` | Handler (Docker) | Región S3 (default: `us-east-1`) |
+| `S3_BUCKET` | Handler (Docker) | Bucket para outputs |
+
 ---
 
 ## 🚀 RunPod Serverless Deployment
+
+**Docker Image:** `marianotintiwc/ugc-pipeline:1.1.1-meli` (alias: `latestv_1.01`)
 
 ### Quick Start
 
 1. **Build the Docker image:**
    ```bash
-   docker build -t ugc-pipeline:latest .
+   docker build -t marianotintiwc/ugc-pipeline:1.1.1-meli .
    ```
 
 2. **Test locally with GPU:**
    ```bash
-   docker run --gpus all -it ugc-pipeline:latest python startup_check.py
+   docker run --gpus all -it marianotintiwc/ugc-pipeline:1.1.1-meli python startup_check.py
    ```
 
-3. **Push to Docker Hub (or your registry):**
+3. **Tag and push to Docker Hub:**
    ```bash
-   docker tag ugc-pipeline:latest your-username/ugc-pipeline:latest
-   docker push your-username/ugc-pipeline:latest
+   # Tag adicional con fecha
+   docker tag marianotintiwc/ugc-pipeline:1.1.1-meli marianotintiwc/ugc-pipeline:2026-01-29
+   
+   # Mantener alias legacy
+   docker tag marianotintiwc/ugc-pipeline:1.1.1-meli marianotintiwc/ugc-pipeline:latestv_1.01
+   
+   # Push todos los tags
+   docker push marianotintiwc/ugc-pipeline:1.1.1-meli
+   docker push marianotintiwc/ugc-pipeline:2026-01-29
+   docker push marianotintiwc/ugc-pipeline:latestv_1.01
    ```
 
 4. **Deploy on RunPod:**
    - Go to RunPod Console → Serverless → New Endpoint
-   - Select your Docker image
+   - Docker image: `marianotintiwc/ugc-pipeline:1.1.1-meli`
    - Set environment variables (see below)
    - Deploy!
 
