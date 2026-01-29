@@ -4,6 +4,10 @@
 # Base: RunPod PyTorch image with CUDA for Whisper & ML workloads
 # Includes: RIFE (rife-ncnn-vulkan), Vulkan, FFmpeg, ImageMagick
 # ─────────────────────────────────────────────────────────────────────────────
+# NOTE: RunPod only provides -devel images for CUDA 12.4.1.
+#       There is no -runtime variant available. Keeping -devel.
+#       Future optimization: consider pytorch/pytorch base + manual CUDA setup.
+# ─────────────────────────────────────────────────────────────────────────────
 
 FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
