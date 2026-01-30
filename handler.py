@@ -86,6 +86,7 @@ import logging
 import traceback
 import random
 import glob
+import re
 from contextlib import contextmanager
 from typing import Dict, Any, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
@@ -774,6 +775,56 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _validate_alpha_fill_config(alpha_cfg: Dict[str, Any], prefix: str) -> None:
+    """Validate alpha_fill config for expected types and ranges."""
+    if not isinstance(alpha_cfg, dict):
+        raise ValueError(f"{prefix} must be an object")
+
+    def _check_bool(key: str):
+        if key in alpha_cfg and alpha_cfg[key] is not None and not isinstance(alpha_cfg[key], bool):
+            raise ValueError(f"{prefix}.{key} must be a boolean")
+
+    def _check_number(key: str, min_val: float | None = None, max_val: float | None = None):
+        if key in alpha_cfg and alpha_cfg[key] is not None:
+            if not _is_number(alpha_cfg[key]):
+                raise ValueError(f"{prefix}.{key} must be a number")
+            if min_val is not None and alpha_cfg[key] < min_val:
+                raise ValueError(f"{prefix}.{key} must be >= {min_val}")
+            if max_val is not None and alpha_cfg[key] > max_val:
+                raise ValueError(f"{prefix}.{key} must be <= {max_val}")
+
+    _check_bool("enabled")
+    _check_number("blur_sigma", min_val=0)
+    _check_number("slow_factor", min_val=0)
+    _check_bool("force_chroma_key")
+    _check_number("chroma_key_similarity", min_val=0, max_val=1)
+    _check_number("chroma_key_blend", min_val=0, max_val=1)
+    _check_number("edge_feather", min_val=0)
+    _check_bool("auto_tune")
+    _check_number("auto_tune_min", min_val=0, max_val=1)
+    _check_number("auto_tune_max", min_val=0, max_val=1)
+    _check_number("auto_tune_step", min_val=0, max_val=1)
+    _check_bool("invert_alpha")
+    _check_bool("auto_invert_alpha")
+    _check_number("auto_invert_alpha_threshold", min_val=0, max_val=1)
+
+    if "auto_tune_min" in alpha_cfg and "auto_tune_max" in alpha_cfg:
+        min_val = alpha_cfg.get("auto_tune_min")
+        max_val = alpha_cfg.get("auto_tune_max")
+        if _is_number(min_val) and _is_number(max_val) and min_val > max_val:
+            raise ValueError(f"{prefix}.auto_tune_min must be <= auto_tune_max")
+
+    if "auto_tune_step" in alpha_cfg:
+        step = alpha_cfg.get("auto_tune_step")
+        if _is_number(step) and step <= 0:
+            raise ValueError(f"{prefix}.auto_tune_step must be > 0")
+
+    if "chroma_key_color" in alpha_cfg and alpha_cfg["chroma_key_color"] is not None:
+        color = str(alpha_cfg["chroma_key_color"])
+        if not re.match(r"^(#|0x)[0-9a-fA-F]{6}$", color):
+            raise ValueError(f"{prefix}.chroma_key_color must be #RRGGBB or 0xRRGGBB")
+
+
 def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> None:
     """Validate payload types and log warnings for unknown fields."""
     if not isinstance(job_input_raw, dict):
@@ -816,6 +867,8 @@ def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> N
                     raise ValueError(f"clips[{idx}].overlap_seconds must be >= 0")
             if "alpha_fill" in clip and clip["alpha_fill"] is not None and not isinstance(clip["alpha_fill"], dict):
                 raise ValueError(f"clips[{idx}].alpha_fill must be an object or null")
+            if "alpha_fill" in clip and clip["alpha_fill"] is not None:
+                _validate_alpha_fill_config(clip["alpha_fill"], f"clips[{idx}].alpha_fill")
             if "effects" in clip and clip["effects"] is not None and not isinstance(clip["effects"], dict):
                 raise ValueError(f"clips[{idx}].effects must be an object or null")
 
@@ -842,6 +895,9 @@ def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> N
     if "style_overrides" in job_input_raw and job_input_raw["style_overrides"] is not None:
         if not isinstance(job_input_raw["style_overrides"], dict):
             raise ValueError("style_overrides must be an object")
+        for key in ("broll_alpha_fill", "endcard_alpha_fill"):
+            if key in job_input_raw["style_overrides"] and job_input_raw["style_overrides"][key] is not None:
+                _validate_alpha_fill_config(job_input_raw["style_overrides"][key], f"style_overrides.{key}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

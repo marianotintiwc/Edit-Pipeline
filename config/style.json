@@ -53,6 +53,10 @@
         "auto_tune_max": 0.30,
         "auto_tune_step": 0.03
     },
+    "alpha_detection": {
+        "use_ffprobe": true,
+        "verbose": true
+    },
     "endcard": {
         "enabled": true,
         "overlap_seconds": 1.25,

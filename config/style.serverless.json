@@ -57,6 +57,10 @@
      "auto_tune_max": 0.30,
      "auto_tune_step": 0.03
   },
+  "alpha_detection": {
+    "use_ffprobe": true,
+    "verbose": true
+  },
   
   "audio": {
     "music_volume": 0.3,

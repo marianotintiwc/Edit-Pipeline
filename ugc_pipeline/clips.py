@@ -247,10 +247,92 @@ def _get_ffmpeg_path() -> str:
     raise RuntimeError("FFmpeg not found. Install imageio-ffmpeg or add ffmpeg to PATH.")
 
 
-def _has_alpha_channel(video_path: str) -> bool:
-    """Detect if a video has an alpha channel using ffmpeg output parsing."""
+def _get_ffprobe_path() -> str | None:
+    """Get FFprobe executable path if available."""
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_dir = os.path.dirname(ffmpeg_exe)
+        for candidate in ("ffprobe", "ffprobe.exe"):
+            probe_path = os.path.join(ffmpeg_dir, candidate)
+            if os.path.exists(probe_path):
+                return probe_path
+    except Exception:
+        pass
+
+    return shutil.which("ffprobe")
+
+
+def _pix_fmt_has_alpha(pix_fmt: str | None) -> bool:
+    if not pix_fmt:
+        return False
+    pix_fmt = pix_fmt.lower()
+    return bool(re.search(r"\b(rgba|argb|bgra|abgr|yuva\w*|ya\w*)\b", pix_fmt))
+
+
+def _ffprobe_stream_info(video_path: str) -> Dict[str, Any] | None:
+    """Get basic stream info using ffprobe (pix_fmt, codec_name, codec_tag_string)."""
+    ffprobe = _get_ffprobe_path()
+    if not ffprobe:
+        return None
+
+    cmd = [
+        ffprobe, "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=pix_fmt,codec_name,codec_tag_string",
+        "-of", "json",
+        video_path
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return None
+        payload = json.loads(result.stdout or "{}")
+        streams = payload.get("streams") or []
+        if not streams:
+            return None
+        stream = streams[0]
+        return {
+            "pix_fmt": stream.get("pix_fmt"),
+            "codec_name": stream.get("codec_name"),
+            "codec_tag_string": stream.get("codec_tag_string")
+        }
+    except Exception:
+        return None
+
+
+def _has_alpha_channel(
+    video_path: str,
+    use_ffprobe: bool = True,
+    verbose: bool = False,
+    indent: int = 0,
+    label: str | None = None
+) -> bool:
+    """Detect if a video has an alpha channel using ffprobe (preferred) or ffmpeg parsing."""
+    label_prefix = f"{label} " if label else ""
+
     if _is_image_file(video_path):
-        return _image_has_alpha(video_path)
+        has_alpha = _image_has_alpha(video_path)
+        if verbose:
+            print_clip_status(
+                f"Alpha detect ({label_prefix}image): has_alpha={has_alpha}",
+                indent
+            )
+        return has_alpha
+
+    if use_ffprobe:
+        info = _ffprobe_stream_info(video_path)
+        if info is not None:
+            pix_fmt = info.get("pix_fmt")
+            has_alpha = _pix_fmt_has_alpha(pix_fmt)
+            if verbose:
+                codec = info.get("codec_name")
+                tag = info.get("codec_tag_string")
+                print_clip_status(
+                    f"Alpha detect ({label_prefix}ffprobe): pix_fmt={pix_fmt}, codec={codec}, tag={tag}, has_alpha={has_alpha}",
+                    indent
+                )
+            return has_alpha
 
     ffmpeg = _get_ffmpeg_path()
     try:
@@ -260,8 +342,19 @@ def _has_alpha_channel(video_path: str) -> bool:
             text=True
         )
         stderr = (result.stderr or "").lower()
-        return bool(re.search(r"video:.*\b(rgba|argb|bgra|abgr|yuva\w*|ya\w*)\b", stderr))
+        has_alpha = bool(re.search(r"video:.*\b(rgba|argb|bgra|abgr|yuva\w*|ya\w*)\b", stderr))
+        if verbose:
+            print_clip_status(
+                f"Alpha detect ({label_prefix}ffmpeg): has_alpha={has_alpha}",
+                indent
+            )
+        return has_alpha
     except Exception:
+        if verbose:
+            print_clip_status(
+                f"Alpha detect ({label_prefix}ffmpeg): failed to inspect",
+                indent
+            )
         return False
 
 
@@ -519,7 +612,9 @@ def _auto_tune_chroma_key(
     temp_files: List[str],
     min_sim: float,
     max_sim: float,
-    step: float
+    step: float,
+    verbose: bool = False,
+    indent: int = 0
 ) -> float:
     """Auto-tune chroma key similarity to get both transparent and opaque alpha."""
     sim = min_sim
@@ -537,16 +632,31 @@ def _auto_tune_chroma_key(
         if y_min is not None and y_max is not None and y_avg is not None:
             # Prefer a wide alpha range (some transparent + some opaque)
             score = (y_max - y_min) - abs(127.5 - y_avg)
+            if verbose:
+                print_clip_status(
+                    f"Auto-tune alpha: sim={sim:.3f} y_min={y_min:.1f} y_max={y_max:.1f} y_avg={y_avg:.1f} score={score:.1f}",
+                    indent
+                )
         if score > best_score:
             best_score = score
             best_sim = sim
 
         # Good enough if we have both transparent and opaque areas
         if y_min is not None and y_max is not None and y_min <= 5 and y_max >= 200:
+            if verbose:
+                print_clip_status(
+                    f"Auto-tune alpha: early stop at sim={sim:.3f} (y_min={y_min:.1f}, y_max={y_max:.1f})",
+                    indent
+                )
             return sim
 
         sim += step
 
+    if verbose:
+        print_clip_status(
+            f"Auto-tune alpha: best sim={best_sim:.3f} (score={best_score:.1f})",
+            indent
+        )
     return best_sim
 
 
@@ -620,6 +730,9 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
     temp_files = []
 
     global_broll_alpha = style_config.get("broll_alpha_fill", {}) if style_config else {}
+    alpha_detection = style_config.get("alpha_detection", {}) if style_config else {}
+    alpha_verbose = bool(alpha_detection.get("verbose", False))
+    alpha_use_ffprobe = alpha_detection.get("use_ffprobe", True)
 
     previous_fill_source = None
 
@@ -668,7 +781,20 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             original_audio = None
             broll_has_alpha = False
             if is_broll and alpha_fill_enabled:
-                broll_has_alpha = _has_alpha_channel(path)
+                broll_has_alpha = _has_alpha_channel(
+                    path,
+                    use_ffprobe=alpha_use_ffprobe,
+                    verbose=alpha_verbose,
+                    indent=3,
+                    label="broll"
+                )
+                if alpha_verbose:
+                    if broll_has_alpha:
+                        print_clip_status("Alpha detected (b-roll) → will fill with blurred background", 3)
+                    elif alpha_force_key:
+                        print_clip_status("No alpha detected → forcing chroma key", 3)
+                    else:
+                        print_clip_status("No alpha detected and force_chroma_key=false → alpha fill skipped", 3)
 
             image_duration = None
             if is_image:
@@ -696,7 +822,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 )
                 original_audio = None
                 if is_broll and alpha_fill_enabled:
-                    broll_has_alpha = _image_has_alpha(path)
+                    broll_has_alpha = _has_alpha_channel(
+                        path,
+                        use_ffprobe=alpha_use_ffprobe,
+                        verbose=alpha_verbose,
+                        indent=3,
+                        label="broll image"
+                    )
             elif is_broll and alpha_force_key:
                 audio_source = VideoFileClip(path)
                 original_audio = audio_source.audio
@@ -708,7 +840,9 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         temp_files,
                         alpha_tune_min,
                         alpha_tune_max,
-                        alpha_tune_step
+                        alpha_tune_step,
+                        verbose=alpha_verbose,
+                        indent=4
                     )
                 alpha_path = _create_chroma_key_alpha(
                     path,
@@ -727,7 +861,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 original_audio = clip.audio
 
             # DEBUG: Export b-roll with alpha for inspection
-            if is_broll and (broll_has_alpha or alpha_force_key):
+            if alpha_verbose and is_broll and (broll_has_alpha or alpha_force_key):
                 debug_folder = "/app/exports/debug"
                 os.makedirs(debug_folder, exist_ok=True)
                 clip_basename = os.path.splitext(os.path.basename(path))[0]
@@ -764,6 +898,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     ).set_duration(clip.duration)
                     clip = clip.set_audio(original_audio)
                 else:
+                    if alpha_verbose:
+                        print_clip_status("Alpha fill enabled but no previous clip available; using normal resize", 3)
                     clip = _resize_to_target(clip)
             else:
                 clip = _resize_to_target(clip)
@@ -798,7 +934,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     endcard_alpha_override = endcard_clip_info.get("alpha_fill") or {}
                     endcard_alpha_config = deep_merge(base_endcard_alpha, endcard_alpha_override)
                     endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
-                    endcard_has_alpha = _has_alpha_channel(endcard_path)
+                    endcard_has_alpha = _has_alpha_channel(
+                        endcard_path,
+                        use_ffprobe=alpha_use_ffprobe,
+                        verbose=alpha_verbose,
+                        indent=3,
+                        label="endcard"
+                    )
 
                     if endcard_force_key:
                         similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -871,7 +1013,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     try:
                         endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
                         endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
-                        endcard_has_alpha = _has_alpha_channel(endcard_path)
+                        endcard_has_alpha = _has_alpha_channel(
+                            endcard_path,
+                            use_ffprobe=alpha_use_ffprobe,
+                            verbose=alpha_verbose,
+                            indent=3,
+                            label="endcard"
+                        )
 
                         if endcard_force_key:
                             similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -890,7 +1038,9 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                     temp_files,
                                     endcard_alpha_config.get("auto_tune_min", 0.05),
                                     endcard_alpha_config.get("auto_tune_max", 0.30),
-                                    endcard_alpha_config.get("auto_tune_step", 0.03)
+                                    endcard_alpha_config.get("auto_tune_step", 0.03),
+                                    verbose=alpha_verbose,
+                                    indent=4
                                 )
                             alpha_path = _create_chroma_key_alpha(
                                 endcard_path,
@@ -925,6 +1075,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                 size=TARGET_RESOLUTION
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
+                        elif alpha_verbose and endcard_alpha_config.get("enabled", False):
+                            if not endcard_has_alpha:
+                                print_clip_status("Endcard alpha-fill enabled but no alpha detected; skipping fill", 3)
+                            elif not previous_fill_source:
+                                print_clip_status("Endcard alpha-fill enabled but no previous clip available; skipping fill", 3)
                         print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                         print(f"     Overlap: {endcard_overlap}s with last clip")
                     except Exception as e:
@@ -1082,6 +1237,9 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
     alpha_tune_min = alpha_fill_config.get("auto_tune_min", 0.05)
     alpha_tune_max = alpha_fill_config.get("auto_tune_max", 0.30)
     alpha_tune_step = alpha_fill_config.get("auto_tune_step", 0.03)
+    alpha_detection = style_config.get("alpha_detection", {}) if style_config else {}
+    alpha_verbose = bool(alpha_detection.get("verbose", False))
+    alpha_use_ffprobe = alpha_detection.get("use_ffprobe", True)
     
     if use_postprocess:
         print("  🎨 Post-processing: ENABLED (AI scenes only)")
@@ -1172,11 +1330,20 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             original_audio = None
             broll_has_alpha = False
             if is_broll and alpha_fill_enabled:
-                broll_has_alpha = _has_alpha_channel(video_path)
-                if broll_has_alpha:
-                    print_clip_status("Alpha detected (b-roll) → will fill with blurred background", 3)
-                elif alpha_force_key:
-                    print_clip_status("Forcing alpha from black (chroma key)", 3)
+                broll_has_alpha = _has_alpha_channel(
+                    video_path,
+                    use_ffprobe=alpha_use_ffprobe,
+                    verbose=alpha_verbose,
+                    indent=3,
+                    label="broll"
+                )
+                if alpha_verbose:
+                    if broll_has_alpha:
+                        print_clip_status("Alpha detected (b-roll) → will fill with blurred background", 3)
+                    elif alpha_force_key:
+                        print_clip_status("No alpha detected → forcing chroma key", 3)
+                    else:
+                        print_clip_status("No alpha detected and force_chroma_key=false → alpha fill skipped", 3)
 
             if is_broll and alpha_force_key:
                 audio_source = VideoFileClip(video_path)
@@ -1189,7 +1356,9 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                         temp_files,
                         alpha_tune_min,
                         alpha_tune_max,
-                        alpha_tune_step
+                        alpha_tune_step,
+                        verbose=alpha_verbose,
+                        indent=4
                     )
                 alpha_path = _create_chroma_key_alpha(
                     video_path,
@@ -1212,7 +1381,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             original_audio = _apply_transition_audio_fades(original_audio, original_clip.duration)
             
             # DEBUG: Export b-roll with alpha for inspection
-            if is_broll and (broll_has_alpha or alpha_force_key):
+            if alpha_verbose and is_broll and (broll_has_alpha or alpha_force_key):
                 debug_folder = "/app/exports/debug"
                 os.makedirs(debug_folder, exist_ok=True)
                 clip_basename = os.path.splitext(os.path.basename(video_path))[0]
@@ -1292,7 +1461,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     ).set_duration(clip.duration)
                     clip = clip.set_audio(original_audio)
                 else:
-                    print_clip_status("Alpha detected but no previous clip available; using normal resize", 3)
+                    if alpha_verbose:
+                        print_clip_status("Alpha fill enabled but no previous clip available; using normal resize", 3)
                     clip = _resize_to_target(clip)
             else:
                 clip = _resize_to_target(clip)
@@ -1320,7 +1490,13 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     try:
                         endcard_alpha_config = _resolve_endcard_alpha_config(style_config)
                         endcard_force_key = endcard_alpha_config.get("force_chroma_key", False)
-                        endcard_has_alpha = _has_alpha_channel(endcard_path)
+                        endcard_has_alpha = _has_alpha_channel(
+                            endcard_path,
+                            use_ffprobe=alpha_use_ffprobe,
+                            verbose=alpha_verbose,
+                            indent=3,
+                            label="endcard"
+                        )
 
                         if endcard_force_key:
                             similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -1339,7 +1515,9 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                                     temp_files,
                                     endcard_alpha_config.get("auto_tune_min", 0.05),
                                     endcard_alpha_config.get("auto_tune_max", 0.30),
-                                    endcard_alpha_config.get("auto_tune_step", 0.03)
+                                    endcard_alpha_config.get("auto_tune_step", 0.03),
+                                    verbose=alpha_verbose,
+                                    indent=4
                                 )
                             alpha_path = _create_chroma_key_alpha(
                                 endcard_path,
@@ -1374,6 +1552,11 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                                 size=TARGET_RESOLUTION
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
+                        elif alpha_verbose and endcard_alpha_config.get("enabled", False):
+                            if not endcard_has_alpha:
+                                print_clip_status("Endcard alpha-fill enabled but no alpha detected; skipping fill", 3)
+                            elif not previous_fill_source:
+                                print_clip_status("Endcard alpha-fill enabled but no previous clip available; skipping fill", 3)
                         print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                         print(f"     Overlap: {endcard_overlap}s before Scene 3 ends")
                     except Exception as e:

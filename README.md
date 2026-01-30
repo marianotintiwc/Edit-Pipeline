@@ -416,6 +416,24 @@ result = client.submit_job_sync(payload)
 print(f"✅ Video: {result['output']['output_url']}")
 ```
 
+### Alpha Detection (ffprobe + verbose)
+
+Para hacer la detección de alpha más clara y auditable, se agregó un bloque opcional en el `style`:
+
+```json
+"alpha_detection": {
+  "use_ffprobe": true,
+  "verbose": true
+}
+```
+
+Con `verbose=true` se imprimen logs explícitos de:
+- pixel format detectado (`pix_fmt`)
+- decisión de alpha (detectado/forzado/skipped)
+- decisiones de auto-tune (si aplica)
+
+Podés activar esto con `style_overrides` cuando envías el payload.
+
 ### Métodos Disponibles
 
 | Método | Descripción |
