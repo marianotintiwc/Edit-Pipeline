@@ -534,11 +534,11 @@ You can override any setting from `style.json`:
 
 ## Deployment Checklist
 
-**Docker Image:** `marianotintiwc/ugc-pipeline:latestv_1.01`
+**Docker Image:** `marianotintiwc/ugc-pipeline:latestv_1.02`
 
-1. ✅ Build Docker image: `docker build -t marianotintiwc/ugc-pipeline:latestv_1.01 .`
-2. ✅ Push to Docker Hub: `docker push marianotintiwc/ugc-pipeline:latestv_1.01`
-3. ✅ Create RunPod serverless endpoint with `marianotintiwc/ugc-pipeline:latestv_1.01`
+1. ✅ Build Docker image: `docker build -t marianotintiwc/ugc-pipeline:latestv_1.02 .`
+2. ✅ Push to Docker Hub: `docker push marianotintiwc/ugc-pipeline:latestv_1.02`
+3. ✅ Create RunPod serverless endpoint with `marianotintiwc/ugc-pipeline:latestv_1.02`
 5. ✅ Set environment variables (AWS credentials, S3_BUCKET)
 6. ✅ Upload endcards to S3: `s3://{bucket}/assets/endcards/`
 7. ✅ Test with a simple request
