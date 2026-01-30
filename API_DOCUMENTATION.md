@@ -160,6 +160,8 @@ Content-Type: application/json
 2. `style_overrides` in the request
 3. `style.json` defaults
 
+**Nota:** `alpha_detection` es global (no por-clip). Se define en `style_overrides.alpha_detection` o en `style.json`.
+
 **Example:** b-roll con blur fuerte y endcard con overlap distinto
 
 ```json
@@ -198,6 +200,10 @@ Content-Type: application/json
       "fontsize": 60,
       "stroke_color": "#333333",
       "stroke_width": 10,
+      "alpha_detection": {
+        "use_ffprobe": true,
+        "verbose": true
+      },
       "transcription": {"model": "large"}
     }
   }
@@ -290,6 +296,13 @@ Payload listo para copiar que ilustra todas las opciones de customización per-c
 | `chroma_key_similarity` | float | `0.08` | Tolerancia del chroma key |
 | `chroma_key_blend` | float | `0.0` | Blend del chroma key |
 | `edge_feather` | int | `0` | Suavizado de bordes |
+
+### Campos alpha_detection Soportados
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `use_ffprobe` | bool | `true` | Usa ffprobe para detectar alpha (fallback a ffmpeg si no está disponible) |
+| `verbose` | bool | `false` | Imprime logs detallados de detección y decisiones de alpha |
 
 ### Notas
 
