@@ -61,7 +61,7 @@ Ejemplo MELI (geo=MLB):
     result = client.submit_job_sync(payload)
     print(f"✅ Video: {result['output']['output_url']}")
 
-Docker Image recomendada: marianotintiwc/ugc-pipeline:1.1.1-meli
+Docker Image recomendada: marianotintiwc/ugc-pipeline:latestv_1.01
 
 Variables de entorno requeridas:
     RUNPOD_API_KEY      - API key de RunPod

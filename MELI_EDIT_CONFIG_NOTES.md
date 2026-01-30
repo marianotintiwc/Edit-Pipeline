@@ -183,7 +183,7 @@ style_overrides = {
 ### Docker Image
 
 La imagen Docker validada para presets MELI es:
-- `marianotintiwc/ugc-pipeline:1.1.1-meli` (alias: `latestv_1.01`)
+- `marianotintiwc/ugc-pipeline:latestv_1.01`
 
 ### Cliente Externo (ugc_client.py)
 

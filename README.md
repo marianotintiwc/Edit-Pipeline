@@ -474,37 +474,33 @@ Podés activar esto con `style_overrides` cuando envías el payload.
 
 ## 🚀 RunPod Serverless Deployment
 
-**Docker Image:** `marianotintiwc/ugc-pipeline:1.1.1-meli` (alias: `latestv_1.01`)
+**Docker Image:** `marianotintiwc/ugc-pipeline:latestv_1.01`
 
 ### Quick Start
 
 1. **Build the Docker image:**
    ```bash
-   docker build -t marianotintiwc/ugc-pipeline:1.1.1-meli .
+  docker build -t marianotintiwc/ugc-pipeline:latestv_1.01 .
    ```
 
 2. **Test locally with GPU:**
    ```bash
-   docker run --gpus all -it marianotintiwc/ugc-pipeline:1.1.1-meli python startup_check.py
+  docker run --gpus all -it marianotintiwc/ugc-pipeline:latestv_1.01 python startup_check.py
    ```
 
 3. **Tag and push to Docker Hub:**
    ```bash
    # Tag adicional con fecha
-   docker tag marianotintiwc/ugc-pipeline:1.1.1-meli marianotintiwc/ugc-pipeline:2026-01-29
+  docker tag marianotintiwc/ugc-pipeline:latestv_1.01 marianotintiwc/ugc-pipeline:2026-01-29
    
-   # Mantener alias legacy
-   docker tag marianotintiwc/ugc-pipeline:1.1.1-meli marianotintiwc/ugc-pipeline:latestv_1.01
-   
-   # Push todos los tags
-   docker push marianotintiwc/ugc-pipeline:1.1.1-meli
+  # Push todos los tags
+  docker push marianotintiwc/ugc-pipeline:latestv_1.01
    docker push marianotintiwc/ugc-pipeline:2026-01-29
-   docker push marianotintiwc/ugc-pipeline:latestv_1.01
    ```
 
 4. **Deploy on RunPod:**
    - Go to RunPod Console → Serverless → New Endpoint
-   - Docker image: `marianotintiwc/ugc-pipeline:1.1.1-meli`
+  - Docker image: `marianotintiwc/ugc-pipeline:latestv_1.01`
    - Set environment variables (see below)
    - Deploy!
 
