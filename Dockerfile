@@ -22,6 +22,8 @@ ENV RIFE_MODEL_PATH=/opt/rife-models
 
 # Ensure /usr/local/bin is in PATH (for rife-ncnn-vulkan)
 ENV PATH="/usr/local/bin:${PATH}"
+ENV IMAGEIO_FFMPEG_EXE=/usr/local/bin/ffmpeg
+ENV LD_LIBRARY_PATH="/opt/ffmpeg/lib:${LD_LIBRARY_PATH}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # System Dependencies
@@ -57,6 +59,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Install FFmpeg with NVENC support (preferred over imageio-ffmpeg)
+# ─────────────────────────────────────────────────────────────────────────────
+RUN mkdir -p /opt/ffmpeg \
+    && wget -q -O /tmp/ffmpeg.tar.xz \
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl-shared.tar.xz" \
+    && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg --strip-components=1 \
+    && ln -sf /opt/ffmpeg/bin/ffmpeg /usr/local/bin/ffmpeg \
+    && ln -sf /opt/ffmpeg/bin/ffprobe /usr/local/bin/ffprobe \
+    && rm -f /tmp/ffmpeg.tar.xz \
+    && /usr/local/bin/ffmpeg -hide_banner -encoders | grep -q h264_nvenc || true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Install Microsoft Core Fonts (Impact, Arial, etc.) via manual download
