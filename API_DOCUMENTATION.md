@@ -133,7 +133,7 @@ Content-Type: application/json
 ```json
 {
   "url": "https://...",      // Required: Video URL (http/https/s3)
-  "type": "scene",           // Required: "scene" or "broll"
+  "type": "scene",           // Required: "scene", "broll", "endcard" or "introcard"
   "start_time": 0.0,         // Optional: Trim start (seconds)
   "end_time": 10.0,          // Optional: Trim end (seconds, use negative to cut from end)
   "alpha_fill": {},          // Optional: Per-clip override for alpha-fill (broll/endcard)
@@ -145,6 +145,8 @@ Content-Type: application/json
 **Clip Types:**
 - `"scene"` / `"talking_head"` — Main footage with subtitles
 - `"broll"` — B-roll with blur/transparency background fill (chroma key effect)
+- `"endcard"` — Branded endcard with optional alpha fill and overlap
+- `"introcard"` — Intro frame overlay; for MELI classic we use the embedded alpha as-is (no inversion)
 
 **Trim Examples:**
 - `"end_time": 10.0` — Cut video at 10 seconds
@@ -303,6 +305,25 @@ Payload listo para copiar que ilustra todas las opciones de customización per-c
 |-------|------|---------|-------------|
 | `use_ffprobe` | bool | `true` | Usa ffprobe para detectar alpha (fallback a ffmpeg si no está disponible) |
 | `verbose` | bool | `false` | Imprime logs detallados de detección y decisiones de alpha |
+
+### Notas sobre alpha en introcard y endcard (Hallazgos)
+
+- Los assets de endcard (por ejemplo, ProRes 4444) siguen usando la detección automática de alpha y `alpha_fill` según configuración.
+- Para el introcard MELI (MARCO_MELI.mov, qtrle/argb) verificamos que el canal alpha de origen ya es correcto: marco amarillo opaco y ventana central transparente.
+- La heurística de auto-inversión podía invertir erróneamente esta máscara y hacer transparente el marco, por lo que **para MELI classic se desactivó cualquier inversión de alpha en introcard**.
+
+Config recomendada para evitar inversiones inesperadas en MELI classic:
+
+```json
+"introcard_alpha_fill": {
+  "enabled": true,
+  "use_blur_background": false,
+  "invert_alpha": false,
+  "auto_invert_alpha": false
+}
+```
+
+Esto asegura que el introcard utilice el alpha tal como viene del archivo de diseño y que solo los endcards/b-rolls sigan usando lógica de detección/inversión automática cuando sea necesario.
 
 ### Notas
 

@@ -1197,6 +1197,15 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     else:
                         introcard_raw = VideoFileClip(introcard_path, has_mask=True)
 
+                    # NOTE:
+                    # - Some branded introcard assets (e.g. MELI MARCO_MELI.mov, qtrle/argb)
+                    #   already ship with a correct alpha where the colored frame is opaque
+                    #   and the center window is transparent.
+                    # - For those cases, inversion must be disabled via style config:
+                    #   introcard_alpha_fill.invert_alpha = false and
+                    #   introcard_alpha_fill.auto_invert_alpha = false.
+                    # - See README.md (MELI preset), API_DOCUMENTATION.md and
+                    #   MELI_EDIT_CONFIG_NOTES.md for the reasoning and examples.
                     introcard_invert_setting = introcard_alpha_config.get("invert_alpha", None)
                     introcard_auto_invert = introcard_alpha_config.get("auto_invert_alpha", True)
                     introcard_invert_threshold = introcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)

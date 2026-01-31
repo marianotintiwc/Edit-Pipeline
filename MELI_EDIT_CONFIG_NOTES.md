@@ -1,17 +1,18 @@
 # MELI Local Edit Configuration Notes
 
-## � MELI EDIT CLASSIC
+## 🟡 MELI EDIT CLASSIC
 
 The standard preset for all MercadoLibre UGC videos. Configuration saved in `presets/meli_edit_classic.json`.
 
 ### Clip Order (Always This Structure)
 
 ```
-Position 1: Scene 1   → Talent intro/hook
-Position 2: Scene 2   → Talent explanation  
-Position 3: B-Roll    → Product/feature demo
-Position 4: Scene 3   → Talent CTA/closing
-Position 5: Endcard   → Brand overlay (0.5s overlap)
+Position 1: Introcard → Branded frame (MARCO_MELI.mov)
+Position 2: Scene 1   → Talent intro/hook
+Position 3: Scene 2   → Talent explanation  
+Position 4: B-Roll    → Product/feature demo
+Position 5: Scene 3   → Talent CTA/closing
+Position 6: Endcard   → Brand overlay (0.5s overlap)
 ```
 
 ### Style Settings (Copy-Paste Ready)
@@ -27,6 +28,12 @@ MELI_EDIT_CLASSIC = {
         "color": "#333333",
         "stroke_color": "#333333",
         "stroke_width": 4
+    },
+    "introcard_alpha_fill": {
+      "enabled": True,
+      "use_blur_background": False,
+      "invert_alpha": False,
+      "auto_invert_alpha": False
     },
     "endcard": {"enabled": True, "overlap_seconds": 0.5},
     "interpolation": {"enabled": True, "target_fps": 60},
@@ -47,6 +54,12 @@ MELI_EDIT_CLASSIC = {
     "stroke_color": "#333333",
     "stroke_width": 4
   },
+  "introcard_alpha_fill": {
+    "enabled": true,
+    "use_blur_background": false,
+    "invert_alpha": false,
+    "auto_invert_alpha": false
+  },
   "endcard": {"enabled": true, "overlap_seconds": 0.5},
   "interpolation": {"enabled": true, "target_fps": 60},
   "postprocess": {"color_grading": {"enabled": false}},
@@ -63,6 +76,7 @@ MELI_EDIT_CLASSIC = {
 | Stroke Color | #333333 (dark gray) | - |
 | Stroke Width | 10 | - |
 | Highlight | #333333 | - |
+| Introcard Alpha | embedded (no inversion) | controlled by `introcard_alpha_fill` |
 | Endcard Overlap | 0.5 seconds | - |
 | Frame Rate | 60 fps (RIFE) | - |
 | Whisper Model | large | - |
@@ -99,6 +113,25 @@ style_overrides = {
 ```
 
 ---
+
+## 🔍 Introcard vs Endcard Alpha – Findings
+
+- El introcard MELI (MARCO_MELI.mov, codec qtrle, pix_fmt argb) trae un canal alpha correcto de fábrica: el marco amarillo es opaco y la ventana central es transparente.
+- La heurística de auto-inversión de máscaras del pipeline podía interpretar ese patrón como "mayormente transparente con algo de opacidad" y decidir invertirlo, haciendo transparente el marco y opaco el centro.
+- Para evitar esto en MELI classic, ahora forzamos **no invertir nunca** el alpha del introcard:
+
+```json
+"introcard_alpha_fill": {
+  "enabled": true,
+  "use_blur_background": false,
+  "invert_alpha": false,
+  "auto_invert_alpha": false
+}
+```
+
+Conclusión práctica:
+- Para introcards diseñados con alpha correcto (como los de MELI), desactivar tanto `invert_alpha` como `auto_invert_alpha` y dejar que el pipeline use el canal alpha tal cual viene del archivo.
+- Los endcards y b-rolls siguen pudiendo usar `alpha_fill` y la lógica de detección/inversión cuando haya dudas sobre el canal alpha de origen.
 
 ## ⚠️ Critical: style_overrides Structure
 

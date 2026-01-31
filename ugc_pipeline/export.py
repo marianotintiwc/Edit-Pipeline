@@ -105,6 +105,37 @@ def export_video(
         f"FFmpeg: {ffmpeg_path} | h264_nvenc={'YES' if nvenc_available else 'NO'} | nvenc_usable={'YES' if nvenc_usable else 'NO'}"
     )
 
+    # 4. Resolve output quality profile and encoding hints
+    output_cfg = {}
+    quality_profile = "delivery"
+    if style_config:
+        pp_config = style_config.get("postprocess", {}) or {}
+        output_cfg = pp_config.get("output", {}) or {}
+        quality_profile = output_cfg.get("profile") or "delivery"
+
+    # Map profile to NVENC CQ defaults (lower = higher quality)
+    default_nvenc_cq = 19  # current default
+    if quality_profile == "delivery_hq":
+        default_nvenc_cq = 17
+    elif quality_profile == "master":
+        default_nvenc_cq = 15
+
+    try:
+        nvenc_cq = int(output_cfg.get("nvenc_cq", default_nvenc_cq))
+    except Exception:
+        nvenc_cq = default_nvenc_cq
+
+    # libx264 hints (used when falling back to CPU encoding)
+    libx264_params = []
+    crf = output_cfg.get("crf")
+    if crf is not None:
+        libx264_params.extend(["-crf", str(crf)])
+    preset = output_cfg.get("preset")
+    if preset:
+        libx264_params.extend(["-preset", str(preset)])
+
+    log_message(f"Output profile: {quality_profile} | nvenc_cq={nvenc_cq}")
+
     # ─────────────────────────────────────────────────────────────
     # MAX QUALITY GPU CONFIGURATION (L40S / Ada Lovelace)
     # Uses CRF-like quality mode for broad FFmpeg compatibility
@@ -112,7 +143,7 @@ def export_video(
     nvenc_params = [
         '-preset', 'p7',
         '-tune', 'hq',
-        '-cq', '19',
+        '-cq', str(nvenc_cq),
         '-b:v', '0',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart'
@@ -127,7 +158,8 @@ def export_video(
             audio_codec='aac',
             audio_bitrate='320k',
             threads=4,
-            logger='bar'
+            logger='bar',
+            ffmpeg_params=libx264_params or None
         )
 
         export_elapsed = time.time() - export_start
@@ -166,5 +198,6 @@ def export_video(
             audio_codec='aac',
             audio_bitrate='320k',
             threads=4,
-            logger='bar'
+            logger='bar',
+            ffmpeg_params=libx264_params or None
         )

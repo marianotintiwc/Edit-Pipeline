@@ -46,6 +46,26 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 
 Endcards preserve transparency by default. To fill transparent areas, enable `endcard_alpha_fill` and set `use_blur_background` to `true` (blurred background from the previous clip). Leave `use_blur_background` as `false` to keep transparency.
 
+#### Introcard Alpha Handling (Findings)
+
+For the MELI introcard asset (MARCO_MELI.mov, qtrle/argb), the embedded alpha channel is already correct: the yellow frame is opaque and the central window is transparent. During debugging we confirmed that the previous auto-inversion heuristic could wrongly flip this mask and make the frame transparent while blocking the center.
+
+- The introcard mask is now used as-is for MELI classic: inversion is disabled via `introcard_alpha_fill`.
+- Endcards continue to use their own alpha (ProRes 4444) and auto-detection logic unless explicitly overridden.
+
+Recommended config for MELI classic:
+
+```json
+"introcard_alpha_fill": {
+  "enabled": true,
+  "use_blur_background": false,
+  "invert_alpha": false,
+  "auto_invert_alpha": false
+}
+```
+
+This keeps the original compositing intent from design: solid yellow frame + transparent center window over the talent video.
+
 ### Complete Payload Example
 
 ```json
@@ -85,7 +105,9 @@ Endcards preserve transparency by default. To fill transparent areas, enable `en
       },
       "introcard_alpha_fill": {
         "enabled": true,
-        "use_blur_background": false
+        "use_blur_background": false,
+        "invert_alpha": false,
+        "auto_invert_alpha": false
       },
       "interpolation": {"enabled": true, "target_fps": 60},
       "postprocess": {"color_grading": {"enabled": false}},

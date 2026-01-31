@@ -154,6 +154,7 @@
         },
         
         "output": {
+            "profile": "delivery",
             "crf": 23,
             "preset": "medium"
         }
