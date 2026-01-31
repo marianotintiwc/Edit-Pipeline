@@ -30,6 +30,29 @@ def _has_nvenc(ffmpeg_path: str) -> bool:
     except Exception:
         return False
 
+
+def _nvenc_usable(ffmpeg_path: str) -> bool:
+    """Return True if NVENC can actually encode on this machine."""
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg_path,
+                "-hide_banner",
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=black:s=16x16:d=0.1",
+                "-c:v", "h264_nvenc",
+                "-f", "null",
+                "-"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
 def print_export_status(message: str, indent: int = 0):
     """Print a formatted status message for export processing."""
     prefix = "  " * indent
@@ -77,7 +100,10 @@ def export_video(
 
     ffmpeg_path = _get_ffmpeg_path()
     nvenc_available = _has_nvenc(ffmpeg_path)
-    log_message(f"FFmpeg: {ffmpeg_path} | h264_nvenc={'YES' if nvenc_available else 'NO'}")
+    nvenc_usable = nvenc_available and _nvenc_usable(ffmpeg_path)
+    log_message(
+        f"FFmpeg: {ffmpeg_path} | h264_nvenc={'YES' if nvenc_available else 'NO'} | nvenc_usable={'YES' if nvenc_usable else 'NO'}"
+    )
 
     # ─────────────────────────────────────────────────────────────
     # MAX QUALITY GPU CONFIGURATION (L40S / Ada Lovelace)
@@ -92,8 +118,8 @@ def export_video(
         '-movflags', '+faststart'
     ]
 
-    if not nvenc_available:
-        log_message("NVENC not available. Falling back to libx264.")
+    if not nvenc_usable:
+        log_message("NVENC not usable. Falling back to libx264.")
         final_clip.write_videofile(
             output_path,
             fps=target_fps,
@@ -133,4 +159,12 @@ def export_video(
     except Exception as e:
         log_message(f"❌ GPU Export Failed: {str(e)}")
         print("     Falling back to CPU...")
-        final_clip.write_videofile(output_path, fps=target_fps, codec='libx264', logger='bar')
+        final_clip.write_videofile(
+            output_path,
+            fps=target_fps,
+            codec='libx264',
+            audio_codec='aac',
+            audio_bitrate='320k',
+            threads=4,
+            logger='bar'
+        )
