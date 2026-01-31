@@ -215,6 +215,19 @@ def _apply_transition_audio_fades(audio_clip, clip_duration: float):
     return audio_clip.fx(afx.audio_fadein, fade).fx(afx.audio_fadeout, fade)
 
 
+def _apply_transition_crossfade(prev_clip, next_clip, duration: float):
+    """Apply audio crossfade on overlapping transition duration."""
+    if duration <= 0:
+        return prev_clip, next_clip
+    if prev_clip is not None and prev_clip.audio:
+        prev_audio = prev_clip.audio.fx(afx.audio_fadeout, duration)
+        prev_clip = prev_clip.set_audio(prev_audio)
+    if next_clip is not None and next_clip.audio:
+        next_audio = next_clip.audio.fx(afx.audio_fadein, duration)
+        next_clip = next_clip.set_audio(next_audio)
+    return prev_clip, next_clip
+
+
 def _resolve_endcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any]:
     """Resolve endcard alpha-fill config with b-roll config as fallback."""
     if not style_config:
@@ -263,6 +276,50 @@ def _get_ffprobe_path() -> str | None:
     return shutil.which("ffprobe")
 
 
+def _loop_pingpong(clip: VideoFileClip, duration: float) -> VideoFileClip:
+    """Loop a clip using a forward+reverse (ping-pong) pattern to avoid hard resets."""
+    if duration <= 0:
+        return clip
+    try:
+        sym = clip.fx(vfx.time_symmetrize)
+    except Exception:
+        sym = clip
+    if sym.duration >= duration:
+        return sym.subclip(0, duration)
+    return sym.loop(duration=duration)
+
+
+def _invert_mask(mask_clip: VideoFileClip) -> VideoFileClip:
+    """Invert a MoviePy mask clip (0->1, 1->0)."""
+    return mask_clip.fl_image(lambda frame: 1.0 - frame)
+
+
+def _should_invert_mask(mask_clip: VideoFileClip, threshold: float = 0.75, samples: int = 3) -> bool:
+    """Heuristic: invert if mask is mostly opaque or mostly transparent but contains mixed values."""
+    try:
+        duration = float(getattr(mask_clip, "duration", 0.0) or 0.0)
+        times = [0.0] if duration <= 0 else np.linspace(0.0, max(duration - 0.001, 0.0), max(samples, 1))
+        means = []
+        mins = []
+        maxs = []
+        for t in times:
+            frame = mask_clip.get_frame(t)
+            mask = frame if frame.ndim == 2 else frame[:, :, 0]
+            means.append(float(mask.mean()))
+            mins.append(float(mask.min()))
+            maxs.append(float(mask.max()))
+        if not means:
+            return False
+        mean_val = float(np.mean(means))
+        min_val = float(np.min(mins))
+        max_val = float(np.max(maxs))
+        mostly_opaque = mean_val >= threshold and min_val < 0.98
+        mostly_transparent = mean_val <= (1.0 - threshold) and max_val > 0.02
+        return mostly_opaque or mostly_transparent
+    except Exception:
+        return False
+
+
 def _pix_fmt_has_alpha(pix_fmt: str | None) -> bool:
     if not pix_fmt:
         return False
@@ -306,7 +363,9 @@ def _has_alpha_channel(
     use_ffprobe: bool = True,
     verbose: bool = False,
     indent: int = 0,
-    label: str | None = None
+    label: str | None = None,
+    require_non_opaque: bool = False,
+    sample_count: int = 3
 ) -> bool:
     """Detect if a video has an alpha channel using ffprobe (preferred) or ffmpeg parsing."""
     label_prefix = f"{label} " if label else ""
@@ -332,6 +391,22 @@ def _has_alpha_channel(
                     f"Alpha detect ({label_prefix}ffprobe): pix_fmt={pix_fmt}, codec={codec}, tag={tag}, has_alpha={has_alpha}",
                     indent
                 )
+            if has_alpha and require_non_opaque:
+                return _mask_has_non_opaque_alpha(
+                    video_path,
+                    sample_count=sample_count,
+                    verbose=verbose,
+                    indent=indent,
+                    label=label
+                )
+            if not has_alpha and require_non_opaque:
+                return _mask_has_non_opaque_alpha(
+                    video_path,
+                    sample_count=sample_count,
+                    verbose=verbose,
+                    indent=indent,
+                    label=label
+                )
             return has_alpha
 
     ffmpeg = _get_ffmpeg_path()
@@ -347,6 +422,22 @@ def _has_alpha_channel(
             print_clip_status(
                 f"Alpha detect ({label_prefix}ffmpeg): has_alpha={has_alpha}",
                 indent
+            )
+        if has_alpha and require_non_opaque:
+            return _mask_has_non_opaque_alpha(
+                video_path,
+                sample_count=sample_count,
+                verbose=verbose,
+                indent=indent,
+                label=label
+            )
+        if not has_alpha and require_non_opaque:
+            return _mask_has_non_opaque_alpha(
+                video_path,
+                sample_count=sample_count,
+                verbose=verbose,
+                indent=indent,
+                label=label
             )
         return has_alpha
     except Exception:
@@ -365,16 +456,76 @@ def _is_image_file(path: str) -> bool:
 
 
 def _image_has_alpha(path: str) -> bool:
-    """Detect if an image has an alpha channel using PIL."""
+    """Detect if an image has any non-opaque alpha channel using PIL."""
     try:
         with Image.open(path) as img:
             if img.mode in {"RGBA", "LA"}:
-                return True
+                img_rgba = img.convert("RGBA")
+                alpha = np.array(img_rgba)[:, :, 3]
+                return bool((alpha < 255).any())
             if img.mode == "P" and "transparency" in img.info:
-                return True
+                img_rgba = img.convert("RGBA")
+                alpha = np.array(img_rgba)[:, :, 3]
+                return bool((alpha < 255).any())
     except Exception:
         return False
     return False
+
+
+def _mask_has_non_opaque_alpha(
+    video_path: str,
+    sample_count: int = 3,
+    verbose: bool = False,
+    indent: int = 0,
+    label: str | None = None
+) -> bool:
+    """Inspect a clip mask and return True if any sampled pixel is non-opaque."""
+    label_prefix = f"{label} " if label else ""
+    clip = None
+    try:
+        clip = VideoFileClip(video_path, has_mask=True)
+        if clip.mask is None:
+            if verbose:
+                print_clip_status(
+                    f"Alpha inspect ({label_prefix}mask): clip.mask is None",
+                    indent
+                )
+            return False
+        duration = float(getattr(clip, "duration", 0.0) or 0.0)
+        if duration <= 0:
+            times = [0.0]
+        else:
+            end_time = max(duration - 0.001, 0.0)
+            times = np.linspace(0.0, end_time, max(sample_count, 1))
+        for t in times:
+            frame = clip.mask.get_frame(t)
+            mask = frame if frame.ndim == 2 else frame[:, :, 0]
+            if float(mask.min()) < 0.999:
+                if verbose:
+                    print_clip_status(
+                        f"Alpha inspect ({label_prefix}mask): non-opaque detected",
+                        indent
+                    )
+                return True
+        if verbose:
+            print_clip_status(
+                f"Alpha inspect ({label_prefix}mask): all opaque",
+                indent
+            )
+        return False
+    except Exception:
+        if verbose:
+            print_clip_status(
+                f"Alpha inspect ({label_prefix}mask): failed to inspect",
+                indent
+            )
+        return False
+    finally:
+        try:
+            if clip is not None:
+                clip.close()
+        except Exception:
+            pass
 
 
 def _load_image_clip(
@@ -508,20 +659,32 @@ def _create_blurred_slow_background(
     duration: float,
     blur_sigma: float,
     slow_factor: float,
-    temp_files: List[str]
+    temp_files: List[str],
+    loop: bool = True
 ) -> str:
     """Create a blurred, slowed background clip using FFmpeg."""
     ffmpeg = _get_ffmpeg_path()
     slow_factor = max(slow_factor, 1.0)
+    target_duration = max(float(duration or 0.0), 0.01)
+    source_duration = 0.0
+    try:
+        with VideoFileClip(source_path) as src_clip:
+            source_duration = float(getattr(src_clip, "duration", 0.0) or 0.0)
+    except Exception:
+        source_duration = 0.0
+
+    if source_duration > 0:
+        slow_factor = max(slow_factor, target_duration / source_duration)
     temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4")
     os.close(temp_fd)
     temp_files.append(temp_path)
 
     filter_str = f"setpts=PTS*{slow_factor},gblur=sigma={blur_sigma}"
-    cmd = [
-        ffmpeg, "-y", "-i", source_path,
+    cmd = [ffmpeg, "-y"]
+    cmd += [
+        "-i", source_path,
         "-vf", filter_str,
-        "-t", str(max(duration, 0.01)),
+        "-t", str(target_duration),
         "-an",
         "-c:v", "libx264",
         "-crf", "23",
@@ -733,6 +896,10 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
     alpha_detection = style_config.get("alpha_detection", {}) if style_config else {}
     alpha_verbose = bool(alpha_detection.get("verbose", False))
     alpha_use_ffprobe = alpha_detection.get("use_ffprobe", True)
+    alpha_require_non_opaque = alpha_detection.get("require_non_opaque", True)
+    transitions_enabled = bool(style_config and style_config.get("transitions", {}).get("enabled", False))
+    transitions_enabled = bool(style_config and style_config.get("transitions", {}).get("enabled", False))
+    alpha_require_non_opaque = alpha_detection.get("require_non_opaque", True)
 
     previous_fill_source = None
 
@@ -786,7 +953,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     use_ffprobe=alpha_use_ffprobe,
                     verbose=alpha_verbose,
                     indent=3,
-                    label="broll"
+                    label="broll",
+                    require_non_opaque=alpha_require_non_opaque
                 )
                 if alpha_verbose:
                     if broll_has_alpha:
@@ -827,7 +995,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         use_ffprobe=alpha_use_ffprobe,
                         verbose=alpha_verbose,
                         indent=3,
-                        label="broll image"
+                        label="broll image",
+                        require_non_opaque=alpha_require_non_opaque
                     )
             elif is_broll and alpha_force_key:
                 audio_source = VideoFileClip(path)
@@ -890,6 +1059,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         temp_files
                     )
                     bg_clip = VideoFileClip(bg_path).without_audio()
+                    if bg_clip.duration < clip.duration:
+                        bg_clip = bg_clip.loop(duration=clip.duration)
                     bg_clip = _resize_to_target(bg_clip)
                     clip = _resize_to_target(clip)
                     clip = CompositeVideoClip(
@@ -904,8 +1075,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             else:
                 clip = _resize_to_target(clip)
 
-            # Always apply tiny audio fades to avoid pops at transitions
-            if clip.audio:
+            # Apply tiny audio fades only when transitions are disabled
+            if clip.audio and not transitions_enabled:
                 clip = clip.set_audio(_apply_transition_audio_fades(clip.audio, clip.duration))
 
             video_clips.append(clip)
@@ -939,8 +1110,10 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         use_ffprobe=alpha_use_ffprobe,
                         verbose=alpha_verbose,
                         indent=3,
-                        label="endcard"
+                        label="endcard",
+                        require_non_opaque=alpha_require_non_opaque
                     )
+                    print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
 
                     if endcard_force_key:
                         similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -974,8 +1147,24 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     else:
                         endcard_raw = VideoFileClip(endcard_path, has_mask=True)
 
+                    # Auto-invert endcard alpha if it appears inverted
+                    endcard_auto_invert = endcard_alpha_config.get("auto_invert_alpha", True)
+                    endcard_invert_threshold = endcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)
+                    if endcard_auto_invert and endcard_raw.mask is not None:
+                        if _should_invert_mask(endcard_raw.mask, threshold=endcard_invert_threshold):
+                            endcard_raw = endcard_raw.set_mask(_invert_mask(endcard_raw.mask))
+
+                    # Auto-invert endcard alpha if it appears inverted
+                    endcard_auto_invert = endcard_alpha_config.get("auto_invert_alpha", True)
+                    endcard_invert_threshold = endcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)
+                    if endcard_auto_invert and endcard_raw.mask is not None:
+                        if _should_invert_mask(endcard_raw.mask, threshold=endcard_invert_threshold):
+                            endcard_raw = endcard_raw.set_mask(_invert_mask(endcard_raw.mask))
+
                     # Resize endcard to target resolution
                     endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                    if endcard_raw.mask is not None and endcard_clip.mask is None:
+                        endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
 
                     # Apply alpha-fill background (same as b-roll) if enabled
                     if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
@@ -989,6 +1178,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             temp_files
                         )
                         bg_clip = VideoFileClip(bg_path).without_audio()
+                        if bg_clip.duration < endcard_clip.duration:
+                            bg_clip = bg_clip.loop(duration=endcard_clip.duration)
                         bg_clip = _resize_to_target(bg_clip)
                         endcard_clip = _resize_to_target(endcard_clip)
                         endcard_clip = CompositeVideoClip(
@@ -1018,8 +1209,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             use_ffprobe=alpha_use_ffprobe,
                             verbose=alpha_verbose,
                             indent=3,
-                            label="endcard"
+                            label="endcard",
+                            require_non_opaque=alpha_require_non_opaque
                         )
+                        print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
+                        print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
 
                         if endcard_force_key:
                             similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -1057,6 +1251,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
 
                         # Resize endcard to target resolution
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        if endcard_raw.mask is not None and endcard_clip.mask is None:
+                            endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
                         if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
                             blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                             slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
@@ -1068,6 +1264,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                 temp_files
                             )
                             bg_clip = VideoFileClip(bg_path).without_audio()
+                            if bg_clip.duration < endcard_clip.duration:
+                                bg_clip = bg_clip.loop(duration=endcard_clip.duration)
                             bg_clip = _resize_to_target(bg_clip)
                             endcard_clip = _resize_to_target(endcard_clip)
                             endcard_clip = CompositeVideoClip(
@@ -1099,8 +1297,12 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     final_clips.append(clip.set_start(current_time))
                     current_time += clip.duration
                 else:
-                    prev_clip = video_clips[i-1]
                     current_time -= transition_duration
+
+                    if final_clips:
+                        last_clip = final_clips[-1]
+                        last_clip, clip = _apply_transition_crossfade(last_clip, clip, transition_duration)
+                        final_clips[-1] = last_clip
                     
                     def make_slide_out(t):
                         if t < prev_clip.duration - transition_duration:
@@ -1189,12 +1391,16 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
         return final_clip
     finally:
         time.sleep(0.5)
-        for temp_path in temp_files:
-            try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except:
-                pass
+        cleanup = os.environ.get("UGC_CLEANUP_TEMP_FILES", "0").strip().lower() in {"1", "true", "yes"}
+        if cleanup:
+            for temp_path in temp_files:
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+        elif temp_files:
+            print("⚠️  Temp background files retained to avoid premature deletion. Set UGC_CLEANUP_TEMP_FILES=1 to remove.")
 
 
 def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None) -> VideoFileClip:
@@ -1335,7 +1541,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     use_ffprobe=alpha_use_ffprobe,
                     verbose=alpha_verbose,
                     indent=3,
-                    label="broll"
+                    label="broll",
+                    require_non_opaque=alpha_require_non_opaque
                 )
                 if alpha_verbose:
                     if broll_has_alpha:
@@ -1378,7 +1585,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
             print_clip_status(f"Loaded: {original_clip.duration:.2f}s @ {original_clip.fps}fps", 3)
 
             # Tiny fades to avoid audio pops at transitions (does not affect music)
-            original_audio = _apply_transition_audio_fades(original_audio, original_clip.duration)
+            if not transitions_enabled:
+                original_audio = _apply_transition_audio_fades(original_audio, original_clip.duration)
             
             # DEBUG: Export b-roll with alpha for inspection
             if alpha_verbose and is_broll and (broll_has_alpha or alpha_force_key):
@@ -1453,6 +1661,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                         temp_files
                     )
                     bg_clip = VideoFileClip(bg_path).without_audio()
+                    if bg_clip.duration < clip.duration:
+                        bg_clip = bg_clip.loop(duration=clip.duration)
                     bg_clip = _resize_to_target(bg_clip)
                     clip = _resize_to_target(clip)
                     clip = CompositeVideoClip(
@@ -1495,7 +1705,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                             use_ffprobe=alpha_use_ffprobe,
                             verbose=alpha_verbose,
                             indent=3,
-                            label="endcard"
+                            label="endcard",
+                            require_non_opaque=alpha_require_non_opaque
                         )
 
                         if endcard_force_key:
@@ -1534,6 +1745,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
 
                         # Resize endcard to target resolution
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        if endcard_raw.mask is not None and endcard_clip.mask is None:
+                            endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
                         if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
                             blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                             slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
@@ -1545,6 +1758,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                                 temp_files
                             )
                             bg_clip = VideoFileClip(bg_path).without_audio()
+                            if bg_clip.duration < endcard_clip.duration:
+                                bg_clip = bg_clip.loop(duration=endcard_clip.duration)
                             bg_clip = _resize_to_target(bg_clip)
                             endcard_clip = _resize_to_target(endcard_clip)
                             endcard_clip = CompositeVideoClip(
@@ -1577,6 +1792,11 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     current_time += clip.duration
                 else:
                     current_time -= transition_duration
+
+                    if final_clips:
+                        last_clip = final_clips[-1]
+                        last_clip, clip = _apply_transition_crossfade(last_clip, clip, transition_duration)
+                        final_clips[-1] = last_clip
                     
                     def make_slide_in(t, trans_dur=transition_duration):
                         if t < trans_dur:

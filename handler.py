@@ -591,7 +591,7 @@ def generate_style_config(
     """
     # Base style configuration
     style = {
-        "font": "Impact",
+        "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
         "fontsize": 80,
         "color": "white",
         "stroke_color": "black",
@@ -630,6 +630,10 @@ def generate_style_config(
             "type": "slide",
             "direction": "left",
             "duration": 0.3
+        },
+        "endcard": {
+            "enabled": False,
+            "overlap_seconds": 0.5
         },
         "postprocess": {
             "enabled": True,
@@ -1021,6 +1025,8 @@ def run_pipeline(
         if job_input.subtitle_mode == SubtitleMode.AUTO:
             with ctx.time_block("Transcription (Whisper)", include_gpu=True):
                 ctx.log("Generating subtitles with Whisper...")
+                ctx.log(f"GPU snapshot (pre-whisper): {get_gpu_utilization()}")
+                ctx.log(f"GPU processes (pre-whisper): {get_gpu_processes()}")
                 # Auto-generate subtitles
                 subs_dir = os.path.join(work_dir, "subs")
                 os.makedirs(subs_dir, exist_ok=True)
@@ -1057,6 +1063,7 @@ def run_pipeline(
                             log_func=ctx.log
                         )
                         ctx.log("Subtitles generated successfully")
+                        ctx.log(f"GPU snapshot (post-whisper): {get_gpu_utilization()}")
                 except Exception as e:
                     ctx.log(f"Subtitle generation failed: {e}", "WARN")
                     srt_path = None
@@ -1069,6 +1076,8 @@ def run_pipeline(
     # Export final video
     with ctx.time_block("Export", include_gpu=True):
         ctx.log("Exporting final video...")
+        ctx.log(f"GPU snapshot (pre-export): {get_gpu_utilization()}")
+        ctx.log(f"GPU processes (pre-export): {get_gpu_processes()}")
         export_video(video_clip, output_path, style, log_func=ctx.log)
     
     # Clean up MoviePy resources
@@ -1122,6 +1131,51 @@ def get_gpu_utilization() -> str:
         return f"GPU util check failed: {e}"
 
 
+def get_gpu_memory_info() -> Optional[Tuple[int, int]]:
+    """Return (used_mb, total_mb) from nvidia-smi, best-effort."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.used,memory.total",
+                "--format=csv,noheader,nounits"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        output = result.stdout.strip().splitlines()
+        if output:
+            used_str, total_str = [v.strip() for v in output[0].split(",")]
+            return int(used_str), int(total_str)
+        return None
+    except Exception:
+        return None
+
+
+def get_gpu_processes() -> str:
+    """List GPU compute processes via nvidia-smi (best-effort)."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid,process_name,used_memory",
+                "--format=csv,noheader,nounits"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        output = result.stdout.strip().splitlines()
+        if not output or (len(output) == 1 and not output[0].strip()):
+            return "none"
+        return "; ".join(line.strip() for line in output)
+    except Exception as e:
+        return f"GPU process check failed: {e}"
+
+
 def get_ffmpeg_encoder_info() -> str:
     """Check FFmpeg encoder availability (best-effort)."""
     try:
@@ -1146,6 +1200,31 @@ def get_ffmpeg_encoder_info() -> str:
         return f"FFmpeg encoder check failed: {e}"
 
 
+def configure_cache_environment(ctx: ProcessingContext) -> None:
+    """Configure cache directories, preferring the RunPod network volume when available."""
+    try:
+        runpod_volume = "/runpod-volume"
+        fallback_volume = "/tmp/runpod-volume"
+        base_cache = runpod_volume if os.path.isdir(runpod_volume) else fallback_volume
+
+        if base_cache == fallback_volume and not os.path.isdir(runpod_volume):
+            os.makedirs(base_cache, exist_ok=True)
+            ctx.log(f"/runpod-volume not found; using {base_cache} for caches", "WARN")
+
+        whisper_cache = os.environ.get("WHISPER_CACHE_DIR") or os.path.join(base_cache, "whisper_models")
+        xdg_cache = os.environ.get("XDG_CACHE_HOME") or os.path.join(base_cache, "cache")
+
+        os.environ["WHISPER_CACHE_DIR"] = whisper_cache
+        os.environ["XDG_CACHE_HOME"] = xdg_cache
+
+        os.makedirs(whisper_cache, exist_ok=True)
+        os.makedirs(xdg_cache, exist_ok=True)
+
+        ctx.log(f"Cache dirs: WHISPER_CACHE_DIR={whisper_cache} | XDG_CACHE_HOME={xdg_cache}")
+    except Exception as e:
+        ctx.log(f"Cache env setup failed: {e}", "WARN")
+
+
 def configure_gpu_environment(ctx: ProcessingContext) -> None:
     """Configure GPU-related environment variables (best-effort)."""
     try:
@@ -1156,10 +1235,23 @@ def configure_gpu_environment(ctx: ProcessingContext) -> None:
         return
 
     if cuda_available:
-        if not os.environ.get("WHISPER_DEVICE"):
-            os.environ["WHISPER_DEVICE"] = "cuda"
+        requested_whisper = os.environ.get("WHISPER_DEVICE")
+        if not requested_whisper:
+            os.environ["WHISPER_DEVICE"] = "auto"
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
         os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+        mem_info = get_gpu_memory_info()
+        if mem_info:
+            used_mb, total_mb = mem_info
+            free_mb = total_mb - used_mb
+            ctx.log(f"GPU memory: used={used_mb}MB free={free_mb}MB total={total_mb}MB")
+            if (not requested_whisper or requested_whisper.lower() in {"auto", "cpu"}) and free_mb < 3000:
+                os.environ["WHISPER_DEVICE"] = "cpu"
+                ctx.log("Low free GPU memory. Forcing WHISPER_DEVICE=cpu", "WARN")
+            elif requested_whisper and requested_whisper.lower() == "cuda" and free_mb < 3000:
+                ctx.log("Low free GPU memory with WHISPER_DEVICE=cuda. OOM risk is high.", "WARN")
         ctx.log(
             "GPU env configured: "
             f"WHISPER_DEVICE={os.environ.get('WHISPER_DEVICE')} | "
@@ -1190,10 +1282,12 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     try:
         ctx.log(f"Starting job {job_id}")
         ctx.log(f"Work directory: {work_dir}")
+        configure_cache_environment(ctx)
         ctx.log("Configuring GPU environment...")
         configure_gpu_environment(ctx)
         ctx.log(f"GPU: {get_gpu_info()}")
         ctx.log(f"GPU snapshot (startup): {get_gpu_utilization()}")
+        ctx.log(f"GPU processes (startup): {get_gpu_processes()}")
         ctx.log(get_ffmpeg_encoder_info())
         
         # Validate and parse input

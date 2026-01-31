@@ -1,5 +1,5 @@
 {
-  "font": "Arial-Bold",
+  "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
   "fontsize": 70,
   "color": "white",
   "stroke_color": "black",
@@ -43,6 +43,11 @@
     "type": "slide",
     "direction": "left",
     "duration": 0.3
+  },
+
+  "endcard": {
+    "enabled": false,
+    "overlap_seconds": 0.5
   },
 
   "broll_alpha_fill": {
