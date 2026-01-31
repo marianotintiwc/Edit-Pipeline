@@ -8,6 +8,7 @@
 ## Critical workflows
 - Local CLI: `ugc_pipeline.py` orchestrates 5 steps (style → clips → audio → subtitles → export) and expects assets under `assets/` and configs under `config/`.
 - Serverless: use `handler.py` with RunPod; environment variables for S3 are required (see `README.md`).
+- RunPod helper CLI: use `Helper Scripts/runpod_cli.py` for submit/status/poll and endpoint image updates (consolidated helper).
 - Validation: `startup_check.py` validates FFmpeg, ImageMagick, Vulkan/RIFE, CUDA; `test_local.py` exercises validation and handler parsing.
 
 ## Project-specific conventions
@@ -15,6 +16,8 @@
 - Post-processing is applied per-scene before concatenation (AI scenes only) in `ugc-pipeline/clips.py`; b-roll skips postprocess.
 - Subtitles: `subtitle_mode=auto` triggers Whisper; `manual` downloads SRT; `none` skips. ImageMagick (`magick`) must be available for MoviePy `TextClip` (`ugc-pipeline/subtitles.py`).
 - Music: `music_url="random"` selects from `assets/audio/`; loop/volume come from `style.json` or request overrides.
+- Endcard transparency: `endcard_alpha_fill.enabled` controls alpha-fill; set `use_blur_background=true` only when you want blurred fill from the previous clip.
+- Audio pop mitigation: tiny boundary fades (~0.05s) run even with transitions; endcard overlap fades are applied automatically.
 
 ## Config files & overrides
 - Style presets: `config/style.json` (serverless also generates style in `generate_style_config()`), deep-merged with `style_overrides` from API input.
@@ -27,3 +30,5 @@
 ## When editing
 - Keep pipeline step order consistent with `ugc_pipeline.py` / `handler.py`.
 - Use MoviePy clips from `ugc-pipeline/` modules; export settings (H.264, CRF 23) are centralized in `ugc-pipeline/export.py`.
+
+  wait for your confirmation that new docker builds are finished before sending a job when testing or debugging serverless.

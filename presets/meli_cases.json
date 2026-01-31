@@ -3,6 +3,8 @@
   "$description": "Map of all GEO + Value Prop combinations to their B-roll and Endcard URLs",
   "$usage": "python run_meli_edit.py --case MLB_PIX --scenes scene1.mp4 scene2.mp4 scene3.mp4",
   
+  "introcard_url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MARCO_MELI.mov",
+
   "base_style": {
     "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
     "fontsize": 60,
@@ -15,7 +17,7 @@
     },
     "endcard": {"enabled": true, "overlap_seconds": 0.5},
     "endcard_alpha_fill": {"enabled": false, "use_blur_background": false},
-    "introcard_alpha_fill": {"enabled": true, "use_blur_background": false},
+    "introcard_alpha_fill": {"enabled": true, "use_blur_background": false, "invert_alpha": true},
     "interpolation": {"enabled": true, "target_fps": 60},
     "postprocess": {"color_grading": {"enabled": false}},
     "transcription": {"model": "large"}

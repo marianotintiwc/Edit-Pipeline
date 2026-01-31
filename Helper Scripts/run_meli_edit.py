@@ -55,7 +55,8 @@ except ImportError:
 import requests
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CASES_FILE = os.path.join(BASE_DIR, "presets", "meli_cases.json")
+REPO_DIR = os.path.dirname(BASE_DIR)
+CASES_FILE = os.path.join(REPO_DIR, "presets", "meli_cases.json")
 
 
 def load_cases() -> dict:
@@ -91,7 +92,14 @@ def list_cases():
     print("Usage: python run_meli_edit.py --case <CASE_ID> --scenes s1.mp4 s2.mp4 s3.mp4")
 
 
-def build_payload(case_id: str, scene_urls: List[str], output_name: Optional[str] = None, output_folder: Optional[str] = None) -> dict:
+def build_payload(
+    case_id: str,
+    scene_urls: List[str],
+    output_name: Optional[str] = None,
+    output_folder: Optional[str] = None,
+    broll_url_override: Optional[str] = None,
+    endcard_url_override: Optional[str] = None
+) -> dict:
     """Build RunPod payload from case ID and scene URLs"""
     config = load_cases()
     
@@ -100,25 +108,32 @@ def build_payload(case_id: str, scene_urls: List[str], output_name: Optional[str
     
     case = config['cases'][case_id]
     base_style = config['base_style'].copy()
+    introcard_url = case.get("introcard_url") or config.get("introcard_url")
     
-    # Set endcard URL
-    if case.get('endcard_url'):
+    # Set endcard URL (case default, override if provided)
+    endcard_url = endcard_url_override or case.get('endcard_url')
+    if endcard_url:
         base_style['endcard'] = {
             **base_style.get('endcard', {}),
-            'url': case['endcard_url']
+            'url': endcard_url
         }
     
-    # Build clips array: scene1, scene2, broll, scene3, endcard
-    clips = [
+    # Build clips array: introcard (overlay), scene1, scene2, broll, scene3, endcard
+    clips = []
+    if introcard_url:
+        clips.append({"type": "introcard", "url": introcard_url})
+    broll_url = broll_url_override or case['broll_url']
+
+    clips.extend([
         {"type": "scene", "url": scene_urls[0]},
         {"type": "scene", "url": scene_urls[1]},
-        {"type": "broll", "url": case['broll_url']},
+        {"type": "broll", "url": broll_url},
         {"type": "scene", "url": scene_urls[2]},
-    ]
+    ])
 
     # Add endcard as a clip so the handler includes it in clips.json
-    if case.get("endcard_url"):
-        clips.append({"type": "endcard", "url": case["endcard_url"]})
+    if endcard_url:
+        clips.append({"type": "endcard", "url": endcard_url})
     
     # Output name
     if not output_name:
@@ -155,8 +170,15 @@ class RunPodClient:
         return r.json()
 
 
-def run_single_job(case_id: str, scene_urls: List[str], output_name: Optional[str] = None, 
-                   output_folder: Optional[str] = None, wait: bool = True) -> dict:
+def run_single_job(
+    case_id: str,
+    scene_urls: List[str],
+    output_name: Optional[str] = None,
+    output_folder: Optional[str] = None,
+    wait: bool = True,
+    broll_url_override: Optional[str] = None,
+    endcard_url_override: Optional[str] = None
+) -> dict:
     """Run a single MELI edit job"""
     api_key = os.environ.get("RUNPOD_API_KEY")
     endpoint_id = os.environ.get("RUNPOD_ENDPOINT_ID", "3zysuiunu9iacy")
@@ -164,7 +186,7 @@ def run_single_job(case_id: str, scene_urls: List[str], output_name: Optional[st
     if not api_key:
         raise ValueError("RUNPOD_API_KEY not set")
     
-    payload = build_payload(case_id, scene_urls, output_name, output_folder)
+    payload = build_payload(case_id, scene_urls, output_name, output_folder, broll_url_override, endcard_url_override)
     client = RunPodClient(api_key, endpoint_id)
     
     print(f"🚀 Submitting job: {case_id}")
@@ -248,7 +270,9 @@ def run_jobs_from_file(jobs_file: str, workers: int = 3):
                     job['case'],
                     job['scenes'],
                     job.get('output_name'),
-                    output_folder
+                    output_folder,
+                    job.get('broll_url'),
+                    job.get('endcard_url')
                 )
                 
                 log(f"🚀 Worker {worker_id} | Starting: {job['case']}")
@@ -335,6 +359,8 @@ Examples:
     parser.add_argument("--case", "-c", help="Case ID (e.g., MLB_PIX, MLA_INCENTIVOS)")
     parser.add_argument("--scenes", "-s", nargs=3, metavar="URL", help="Three scene URLs: scene1 scene2 scene3")
     parser.add_argument("--output", "-o", help="Custom output filename (without .mp4)")
+    parser.add_argument("--broll-url", help="Override b-roll URL for this run")
+    parser.add_argument("--endcard-url", help="Override endcard URL for this run")
     parser.add_argument("--output-folder", help="S3 output folder")
     parser.add_argument("--jobs", "-j", help="JSON file with multiple jobs")
     parser.add_argument("--workers", "-w", type=int, default=3, help="Number of workers for batch jobs")
@@ -353,7 +379,14 @@ Examples:
     
     if args.case and args.scenes:
         if args.payload_only:
-            payload = build_payload(args.case, args.scenes, args.output, args.output_folder)
+            payload = build_payload(
+                args.case,
+                args.scenes,
+                args.output,
+                args.output_folder,
+                args.broll_url,
+                args.endcard_url
+            )
             print(json.dumps(payload, indent=2))
             return 0
         
@@ -362,7 +395,9 @@ Examples:
             args.scenes,
             args.output,
             args.output_folder,
-            wait=not args.no_wait
+            wait=not args.no_wait,
+            broll_url_override=args.broll_url,
+            endcard_url_override=args.endcard_url
         )
         return 0
     

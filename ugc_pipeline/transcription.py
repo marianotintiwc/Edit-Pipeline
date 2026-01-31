@@ -46,6 +46,14 @@ def transcribe_audio_array(
         else:
             print(message)
     requested_device = os.environ.get("WHISPER_DEVICE", "auto").strip().lower()
+    whisper_cache_dir = os.environ.get("WHISPER_CACHE_DIR")
+    if whisper_cache_dir:
+        try:
+            os.makedirs(whisper_cache_dir, exist_ok=True)
+            _log(f"Whisper cache dir: {whisper_cache_dir}")
+        except Exception as e:
+            _log(f"⚠️  Failed to prepare WHISPER_CACHE_DIR ({whisper_cache_dir}): {e}")
+            whisper_cache_dir = None
     if requested_device not in {"auto", "cuda", "cpu"}:
         _log(f"⚠️  Invalid WHISPER_DEVICE='{requested_device}'. Falling back to auto.")
         requested_device = "auto"
@@ -64,13 +72,26 @@ def transcribe_audio_array(
             _log(f"  GPU memory: {free_mem / (1024**3):.2f}GB free / {total_mem / (1024**3):.2f}GB total")
         except Exception:
             pass
+    used_cuda = False
     try:
-        model = whisper.load_model(model_name, device=device)
+        load_kwargs = {"device": device}
+        if whisper_cache_dir:
+            load_kwargs["download_root"] = whisper_cache_dir
+        model = whisper.load_model(model_name, **load_kwargs)
+        used_cuda = (device == "cuda")
     except Exception as e:
         if device == "cuda":
             _log(f"⚠️  CUDA load failed ({e}). Falling back to CPU...")
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
             device = "cpu"
-            model = whisper.load_model(model_name, device=device)
+            load_kwargs = {"device": device}
+            if whisper_cache_dir:
+                load_kwargs["download_root"] = whisper_cache_dir
+            model = whisper.load_model(model_name, **load_kwargs)
+            used_cuda = False
         else:
             raise
 
@@ -97,7 +118,17 @@ def transcribe_audio_array(
     except RuntimeError as e:
         if device == "cuda" and "out of memory" in str(e).lower():
             _log(f"⚠️  GPU out of memory. Retrying on CPU...")
-            model = whisper.load_model(model_name, device="cpu")
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            device = "cpu"
+            options["fp16"] = False
+            load_kwargs = {"device": "cpu"}
+            if whisper_cache_dir:
+                load_kwargs["download_root"] = whisper_cache_dir
+            model = whisper.load_model(model_name, **load_kwargs)
+            used_cuda = False
             result = model.transcribe(audio_data, **options)
         else:
             raise
@@ -152,6 +183,14 @@ def transcribe_audio_array(
             f.write(f"{text}\n\n")
             
     _log(f"Transcription complete in {time.time() - start_time:.1f}s")
+
+    if used_cuda:
+        try:
+            del model
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
 
 def process_chunk(chunk, final_segments):
     """Helper to process a chunk of words into karaoke segments"""

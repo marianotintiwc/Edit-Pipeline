@@ -1197,8 +1197,14 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     else:
                         introcard_raw = VideoFileClip(introcard_path, has_mask=True)
 
+                    introcard_invert_setting = introcard_alpha_config.get("invert_alpha", None)
                     introcard_auto_invert = introcard_alpha_config.get("auto_invert_alpha", True)
                     introcard_invert_threshold = introcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)
+                    if introcard_invert_setting is True and introcard_raw.mask is not None:
+                        introcard_raw = introcard_raw.set_mask(_invert_mask(introcard_raw.mask))
+                        introcard_auto_invert = False
+                    elif introcard_invert_setting is False:
+                        introcard_auto_invert = False
                     if introcard_auto_invert and introcard_raw.mask is not None:
                         if _should_invert_mask(introcard_raw.mask, threshold=introcard_invert_threshold):
                             introcard_raw = introcard_raw.set_mask(_invert_mask(introcard_raw.mask))

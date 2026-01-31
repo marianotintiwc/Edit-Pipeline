@@ -2,6 +2,32 @@
 echo "=== UGC Pipeline Container Startup ==="
 echo "Validating environment..."
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Whisper cache on RunPod network volume (persistent)
+# ─────────────────────────────────────────────────────────────────────────────
+RUNPOD_VOLUME="/runpod-volume"
+LOCAL_CACHE_FALLBACK="/tmp/runpod-volume"
+
+if [ -d "$RUNPOD_VOLUME" ]; then
+    BASE_CACHE="$RUNPOD_VOLUME"
+else
+    BASE_CACHE="$LOCAL_CACHE_FALLBACK"
+    mkdir -p "$BASE_CACHE"
+    echo "⚠️  /runpod-volume not found; using $BASE_CACHE for caches"
+fi
+
+export WHISPER_CACHE_DIR="${WHISPER_CACHE_DIR:-$BASE_CACHE/whisper_models}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$BASE_CACHE/cache}"
+
+mkdir -p "$WHISPER_CACHE_DIR" "$XDG_CACHE_HOME"
+
+if [ ! -f "$WHISPER_CACHE_DIR/large.pt" ]; then
+    echo "Whisper model not found in $WHISPER_CACHE_DIR. Downloading..."
+    python -c "import whisper; whisper.load_model('large', download_root='$WHISPER_CACHE_DIR')"
+else
+    echo "Whisper model found in $WHISPER_CACHE_DIR. Skipping download."
+fi
+
 # Check Vulkan
 if command -v vulkaninfo &> /dev/null; then
     echo "✅ Vulkan: $(vulkaninfo --summary 2>&1 | grep -i gpu | head -1 || echo available)"
