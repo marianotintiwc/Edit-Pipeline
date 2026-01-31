@@ -62,6 +62,11 @@
         "force_chroma_key": false,
         "use_blur_background": false
     },
+    "introcard_alpha_fill": {
+        "enabled": true,
+        "force_chroma_key": false,
+        "use_blur_background": false
+    },
     "endcard": {
         "enabled": true,
         "overlap_seconds": 0.5,

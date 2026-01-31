@@ -72,6 +72,12 @@
     "force_chroma_key": false,
     "use_blur_background": false
   },
+
+  "introcard_alpha_fill": {
+    "enabled": true,
+    "force_chroma_key": false,
+    "use_blur_background": false
+  },
   
   "audio": {
     "music_volume": 0.3,

@@ -32,6 +32,14 @@
       "enabled": true,
       "overlap_seconds": 0.5
     },
+    "endcard_alpha_fill": {
+      "enabled": false,
+      "use_blur_background": false
+    },
+    "introcard_alpha_fill": {
+      "enabled": true,
+      "use_blur_background": false
+    },
     
     "interpolation": {
       "enabled": true,
@@ -111,6 +119,14 @@
           "enabled": true,
           "overlap_seconds": 0.5,
           "url": "https://drive.google.com/..."
+        },
+        "endcard_alpha_fill": {
+          "enabled": false,
+          "use_blur_background": false
+        },
+        "introcard_alpha_fill": {
+          "enabled": true,
+          "use_blur_background": false
         },
         "interpolation": {"enabled": true, "target_fps": 60},
         "postprocess": {"color_grading": {"enabled": false}},

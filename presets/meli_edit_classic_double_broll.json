@@ -7,6 +7,7 @@
   "preset_name": "MELI_CLASSIC_DOUBLE_B_ROLL",
 
   "clip_order": [
+    {"position": 0, "type": "introcard", "description": "Intro frame overlay (alpha)"},
     {"position": 1, "type": "scene", "description": "Opening scene with talent"},
     {"position": 2, "type": "scene", "description": "Middle scene with talent"},
     {"position": 3, "type": "broll", "description": "B-roll footage (product/feature demo)"},
@@ -50,6 +51,7 @@
 
     "endcard_alpha_fill": {
       "enabled": true,
+      "use_blur_background": true,
       "blur_sigma": 60,
       "slow_factor": 1.5,
       "force_chroma_key": true,
@@ -61,6 +63,12 @@
       "auto_tune_min": 0.05,
       "auto_tune_max": 0.30,
       "auto_tune_step": 0.03
+    },
+
+    "introcard_alpha_fill": {
+      "enabled": true,
+      "use_blur_background": false,
+      "force_chroma_key": false
     },
 
     "interpolation": {

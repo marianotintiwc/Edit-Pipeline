@@ -16,7 +16,7 @@ Input Schema:
         "video_urls": [str, ...],              # Legacy: list of video URLs (all treated as scenes)
         "clips": [                              # NEW: Ordered list of clips with metadata
             {
-                "type": "scene" | "broll" | "endcard",  # Clip type
+                "type": "scene" | "broll" | "endcard" | "introcard",  # Clip type
                 "url": str,                    # Video URL (http/https)
                 "start_time": float | None,    # Optional trim start (seconds)
                 "end_time": float | None,      # Optional trim end (seconds, use -0.1 for "cut 0.1s before end")
@@ -127,7 +127,7 @@ class SubtitleMode(str, Enum):
 class ClipInput:
     """Single clip input with metadata."""
     url: str
-    clip_type: str = "scene"  # "scene", "broll", or "endcard"
+    clip_type: str = "scene"  # "scene", "broll", "endcard", or "introcard"
     start_time: Optional[float] = None
     end_time: Optional[float] = None  # Use negative values for "cut X seconds before end" (e.g., -0.1)
     alpha_fill: Optional[Dict[str, Any]] = None
@@ -137,8 +137,8 @@ class ClipInput:
     def __post_init__(self):
         if not self.url.startswith(('http://', 'https://')):
             raise ValueError(f"Clip URL must be HTTP/HTTPS, got: {self.url}")
-        if self.clip_type not in ("scene", "broll", "endcard"):
-            raise ValueError(f"clip_type must be 'scene', 'broll', or 'endcard', got: {self.clip_type}")
+        if self.clip_type not in ("scene", "broll", "endcard", "introcard"):
+            raise ValueError(f"clip_type must be 'scene', 'broll', 'endcard', or 'introcard', got: {self.clip_type}")
         if self.alpha_fill is not None and not isinstance(self.alpha_fill, dict):
             raise ValueError("alpha_fill must be an object when provided")
         if self.effects is not None and not isinstance(self.effects, dict):
@@ -492,6 +492,8 @@ def download_videos(
             clip_type_prefix = "broll"
         elif clip.clip_type == "endcard":
             clip_type_prefix = "endcard"
+        elif clip.clip_type == "introcard":
+            clip_type_prefix = "introcard"
         else:
             clip_type_prefix = "scene"
         dest = os.path.join(video_dir, f"{clip_type_prefix}_{i+1}{ext}")
@@ -687,6 +689,11 @@ def generate_style_config(
             "enabled": False,
             "force_chroma_key": False,
             "use_blur_background": False
+        },
+        "introcard_alpha_fill": {
+            "enabled": True,
+            "force_chroma_key": False,
+            "use_blur_background": False
         }
     }
     
@@ -862,9 +869,9 @@ def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> N
             if not clip.get("url") or not isinstance(clip.get("url"), str):
                 raise ValueError(f"clips[{idx}].url is required and must be a string")
             clip_type = clip.get("type", "scene")
-            if clip_type not in ("scene", "broll", "endcard"):
+            if clip_type not in ("scene", "broll", "endcard", "introcard"):
                 raise ValueError(
-                    f"clips[{idx}].type must be 'scene', 'broll', or 'endcard', got: {clip_type}"
+                    f"clips[{idx}].type must be 'scene', 'broll', 'endcard', or 'introcard', got: {clip_type}"
                 )
             for key in ("start_time", "end_time"):
                 if key in clip and clip[key] is not None and not _is_number(clip[key]):
@@ -904,7 +911,7 @@ def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> N
     if "style_overrides" in job_input_raw and job_input_raw["style_overrides"] is not None:
         if not isinstance(job_input_raw["style_overrides"], dict):
             raise ValueError("style_overrides must be an object")
-        for key in ("broll_alpha_fill", "endcard_alpha_fill"):
+        for key in ("broll_alpha_fill", "endcard_alpha_fill", "introcard_alpha_fill"):
             if key in job_input_raw["style_overrides"] and job_input_raw["style_overrides"][key] is not None:
                 _validate_alpha_fill_config(job_input_raw["style_overrides"][key], f"style_overrides.{key}")
 

@@ -251,6 +251,25 @@ def _resolve_endcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any
     return endcard_cfg
 
 
+def _resolve_introcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve introcard alpha-fill config with endcard config as fallback."""
+    if not style_config:
+        return {}
+    introcard_cfg = style_config.get("introcard_alpha_fill", {}) or {}
+    endcard_cfg = style_config.get("endcard_alpha_fill", {}) or {}
+
+    if not introcard_cfg and endcard_cfg:
+        introcard_cfg = {**endcard_cfg}
+
+    if not introcard_cfg:
+        introcard_cfg = {"enabled": True}
+
+    introcard_cfg.setdefault("force_chroma_key", False)
+    introcard_cfg.setdefault("use_blur_background", False)
+
+    return introcard_cfg
+
+
 def _get_ffmpeg_path() -> str:
     """Get FFmpeg executable path."""
     try:
@@ -940,11 +959,15 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
     except Exception:
         pass
 
-    # Separate endcard from regular clips
+    # Separate introcard/endcard from regular clips
+    introcard_clip_info = None
     endcard_clip_info = None
     regular_clips = []
     for clip_info in clips_data:
-        if (clip_info.get("type") or "").lower() == "endcard":
+        clip_type = (clip_info.get("type") or "").lower()
+        if clip_type == "introcard":
+            introcard_clip_info = clip_info
+        elif clip_type == "endcard":
             endcard_clip_info = clip_info
         else:
             regular_clips.append(clip_info)
@@ -1120,6 +1143,97 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
 
         if not video_clips:
             raise ValueError("No valid clips found to process.")
+
+        # Get introcard if enabled
+        introcard_clip = None
+        introcard_fill_source = regular_clips[0].get("path") if regular_clips else None
+
+        if introcard_clip_info:
+            introcard_path = introcard_clip_info.get("path")
+            if introcard_path and os.path.exists(introcard_path):
+                print(f"\n  🎬 Loading introcard from clips.json...")
+                try:
+                    introcard_alpha_config = _resolve_introcard_alpha_config(style_config) if style_config else {}
+                    introcard_force_key = introcard_alpha_config.get("force_chroma_key", False)
+                    introcard_has_alpha = _has_alpha_channel(
+                        introcard_path,
+                        use_ffprobe=alpha_use_ffprobe,
+                        verbose=alpha_verbose,
+                        indent=3,
+                        label="introcard",
+                        require_non_opaque=alpha_require_non_opaque
+                    )
+                    print_clip_status(f"Introcard alpha detected: {introcard_has_alpha}", 3)
+
+                    if introcard_force_key:
+                        similarity = introcard_alpha_config.get("chroma_key_similarity", 0.08)
+                        blend = introcard_alpha_config.get("chroma_key_blend", 0.0)
+                        edge_feather = introcard_alpha_config.get("edge_feather", 0)
+                        hex_color = introcard_alpha_config.get("chroma_key_color", "0x000000")
+                        print_clip_status(
+                            f"Introcard alpha-fill config: color={hex_color}, sim={similarity}, blend={blend}, blur={introcard_alpha_config.get('blur_sigma', 8)}, slow={introcard_alpha_config.get('slow_factor', 1.5)}",
+                            3
+                        )
+                        auto_tune = introcard_alpha_config.get("auto_tune", False)
+                        if auto_tune:
+                            similarity = _auto_tune_chroma_key(
+                                introcard_path,
+                                blend,
+                                temp_files,
+                                introcard_alpha_config.get("auto_tune_min", 0.05),
+                                introcard_alpha_config.get("auto_tune_max", 0.30),
+                                introcard_alpha_config.get("auto_tune_step", 0.03)
+                            )
+                        alpha_path = _create_chroma_key_alpha(
+                            introcard_path,
+                            similarity,
+                            blend,
+                            temp_files,
+                            hex_color=hex_color,
+                            edge_feather=edge_feather
+                        )
+                        introcard_raw = VideoFileClip(alpha_path, has_mask=True)
+                        introcard_has_alpha = True
+                    else:
+                        introcard_raw = VideoFileClip(introcard_path, has_mask=True)
+
+                    introcard_auto_invert = introcard_alpha_config.get("auto_invert_alpha", True)
+                    introcard_invert_threshold = introcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)
+                    if introcard_auto_invert and introcard_raw.mask is not None:
+                        if _should_invert_mask(introcard_raw.mask, threshold=introcard_invert_threshold):
+                            introcard_raw = introcard_raw.set_mask(_invert_mask(introcard_raw.mask))
+
+                    introcard_clip = introcard_raw.resize(TARGET_RESOLUTION)
+                    if introcard_raw.mask is not None and introcard_clip.mask is None:
+                        introcard_clip = introcard_clip.set_mask(introcard_raw.mask.resize(introcard_clip.size))
+
+                    if introcard_alpha_config.get("enabled", False) and introcard_alpha_config.get("use_blur_background", False) and introcard_fill_source:
+                        blur_sigma = introcard_alpha_config.get("blur_sigma", 8)
+                        slow_factor = introcard_alpha_config.get("slow_factor", 1.5)
+                        bg_path = _create_blurred_slow_background(
+                            introcard_fill_source,
+                            introcard_clip.duration,
+                            blur_sigma,
+                            slow_factor,
+                            temp_files
+                        )
+                        bg_clip = VideoFileClip(bg_path).without_audio()
+                        if bg_clip.duration < introcard_clip.duration:
+                            bg_clip = bg_clip.loop(duration=introcard_clip.duration)
+                        bg_clip = _resize_to_target(bg_clip)
+                        introcard_clip = _resize_to_target(introcard_clip)
+                        introcard_clip = CompositeVideoClip(
+                            [bg_clip, introcard_clip.set_position("center")],
+                            size=TARGET_RESOLUTION
+                        ).set_duration(introcard_clip.duration).set_audio(introcard_clip.audio)
+                        print("     Introcard alpha-fill: enabled (b-roll style)")
+                    elif introcard_alpha_config.get("enabled", False) and not introcard_alpha_config.get("use_blur_background", False):
+                        print_clip_status("Introcard alpha-fill background disabled; preserving transparency", 3)
+
+                    print(f"     Introcard: {os.path.basename(introcard_path)} ({introcard_clip.duration:.2f}s)")
+                except Exception as e:
+                    print(f"     ⚠️ Failed to load introcard: {e}")
+                    introcard_clip = None
 
         # Get endcard if enabled
         endcard_clip = None
@@ -1448,6 +1562,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     final_clips.append(clip_with_anim)
                     current_time += clip.duration
             
+            # Add introcard overlay if available
+            if introcard_clip:
+                introcard_positioned = introcard_clip.set_start(0)
+                final_clips.append(introcard_positioned)
+
             # Add endcard overlay if available
             if endcard_clip:
                 endcard_start = current_time - endcard_overlap
@@ -1483,6 +1602,12 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             print("Concatenating clips...")
             final_clip = concatenate_videoclips(video_clips, method="compose")
             
+            # Add introcard for non-transition mode
+            if introcard_clip:
+                introcard_positioned = introcard_clip.set_start(0)
+                final_clip = CompositeVideoClip([final_clip, introcard_positioned], size=TARGET_RESOLUTION)
+                final_clip = final_clip.set_duration(final_clip.duration)
+
             # Add endcard for non-transition mode
             if endcard_clip:
                 total_dur = final_clip.duration

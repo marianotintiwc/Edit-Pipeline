@@ -42,6 +42,10 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Whisper Model** | `large` | Best accuracy |
 | **Color Grading** | `disabled` | Raw look |
 
+#### Endcard Alpha Handling
+
+Endcards preserve transparency by default. To fill transparent areas, enable `endcard_alpha_fill` and set `use_blur_background` to `true` (blurred background from the previous clip). Leave `use_blur_background` as `false` to keep transparency.
+
 ### Complete Payload Example
 
 ```json
@@ -51,6 +55,7 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
     "output_folder": "MLB_Exports/2026-01",
     "output_filename": "project_MELI_EDIT.mp4",
     "clips": [
+      {"type": "introcard", "url": "https://.../introcard.mov"},
       {"type": "scene", "url": "https://...scene_1_lipsync.mp4"},
       {"type": "scene", "url": "https://...scene_2_lipsync.mp4"},
       {"type": "broll", "url": "https://drive.google.com/uc?export=download&id=..."},
@@ -73,6 +78,14 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
         "enabled": true,
         "overlap_seconds": 0.5,
         "url": "https://drive.google.com/uc?export=download&id=..."
+      },
+      "endcard_alpha_fill": {
+        "enabled": false,
+        "use_blur_background": false
+      },
+      "introcard_alpha_fill": {
+        "enabled": true,
+        "use_blur_background": false
       },
       "interpolation": {"enabled": true, "target_fps": 60},
       "postprocess": {"color_grading": {"enabled": false}},
@@ -274,6 +287,7 @@ escena1  → escena2  → broll1   → escena3  → broll2
         "stroke_width": 4
       },
       "endcard": {"enabled": true, "overlap_seconds": 0.5, "url": "https://..."},
+      "endcard_alpha_fill": {"enabled": false, "use_blur_background": false},
       "postprocess": {"color_grading": {"enabled": false}},
       "transcription": {"model": "large"}
     }
@@ -301,6 +315,7 @@ escena1  → escena2  → broll1   → escena3  → broll2
 | `stroke_width` | TOP | Ancho del borde |
 | `highlight.color` | Nested | Color del highlight/karaoke |
 | `endcard.url` | Nested | URL del endcard |
+| `endcard_alpha_fill.use_blur_background` | Nested | Fondo blur para transparencia de endcard |
 | `transcription.model` | Nested | Modelo Whisper: `tiny`, `base`, `small`, `medium`, `large` |
 
 ---
@@ -809,6 +824,7 @@ See `config/clips.sample.json` and `config/style.sample.json` for configuration 
 ## Endcard
 - Enabled: true
 - Overlap seconds: 0.5
+- Transparencia: usar `endcard_alpha_fill` (blur opcional con `use_blur_background=true`)
 
 ## Interpolation
 - Enabled: true

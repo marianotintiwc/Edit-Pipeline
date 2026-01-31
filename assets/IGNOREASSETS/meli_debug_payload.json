@@ -6,6 +6,10 @@
     "output_filename": "1_smart_2-MLA-female_ALPHA_DEBUG.mp4",
     "clips": [
       {
+        "type": "introcard",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MARCO_MELI.mov"
+      },
+      {
         "type": "scene",
         "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs 28-1/1_smart_2-MLA-female/1_smart_2-MLA-female_scene_1_lipsync.mp4"
       },
@@ -46,6 +50,11 @@
       },
       "endcard_alpha_fill": {
         "enabled": false,
+        "force_chroma_key": false,
+        "use_blur_background": false
+      },
+      "introcard_alpha_fill": {
+        "enabled": true,
         "force_chroma_key": false,
         "use_blur_background": false
       },
