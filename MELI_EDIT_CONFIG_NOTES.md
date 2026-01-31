@@ -216,7 +216,7 @@ Conclusión práctica:
 ### Docker Image
 
 La imagen Docker validada para presets MELI es:
-- `marianotintiwc/ugc-pipeline:latestv_1.02`
+- `marianotintiwc/ugc-pipeline:latestv_1.06`
 
 ### Cliente Externo (ugc_client.py)
 
