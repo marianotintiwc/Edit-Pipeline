@@ -325,6 +325,29 @@ def _should_invert_mask(mask_clip: VideoFileClip, threshold: float = 0.75, sampl
         return False
 
 
+def _log_mask_stats(mask_clip: VideoFileClip | None, label: str, indent: int = 0, samples: int = 3) -> None:
+    """Log basic mask stats (min/max/mean) for a few frames."""
+    if mask_clip is None:
+        print_clip_status(f"{label}: mask is None", indent)
+        return
+    try:
+        duration = float(getattr(mask_clip, "duration", 0.0) or 0.0)
+        if duration <= 0:
+            times = [0.0]
+        else:
+            end_time = max(duration - 0.001, 0.0)
+            times = np.linspace(0.0, end_time, max(samples, 1))
+        stats = []
+        for t in times:
+            frame = mask_clip.get_frame(t)
+            mask = frame if frame.ndim == 2 else frame[:, :, 0]
+            stats.append((float(mask.min()), float(mask.mean()), float(mask.max())))
+        stats_str = ", ".join([f"t{i}:min={m:.3f},mean={a:.3f},max={x:.3f}" for i, (m, a, x) in enumerate(stats)])
+        print_clip_status(f"{label}: {stats_str}", indent)
+    except Exception as e:
+        print_clip_status(f"{label}: failed to read mask stats ({e})", indent)
+
+
 def _pix_fmt_has_alpha(pix_fmt: str | None) -> bool:
     if not pix_fmt:
         return False
@@ -1161,12 +1184,18 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     else:
                         endcard_raw = VideoFileClip(endcard_path, has_mask=True)
 
+                    if alpha_verbose:
+                        _log_mask_stats(endcard_raw.mask, "Endcard mask (pre-invert)", indent=4)
+
                     # Auto-invert endcard alpha if it appears inverted
                     endcard_auto_invert = endcard_alpha_config.get("auto_invert_alpha", True)
                     endcard_invert_threshold = endcard_alpha_config.get("auto_invert_alpha_threshold", 0.75)
                     if endcard_auto_invert and endcard_raw.mask is not None:
                         if _should_invert_mask(endcard_raw.mask, threshold=endcard_invert_threshold):
                             endcard_raw = endcard_raw.set_mask(_invert_mask(endcard_raw.mask))
+
+                    if alpha_verbose:
+                        _log_mask_stats(endcard_raw.mask, "Endcard mask (post-invert)", indent=4)
 
                     # Auto-invert endcard alpha if it appears inverted
                     endcard_auto_invert = endcard_alpha_config.get("auto_invert_alpha", True)
@@ -1294,10 +1323,22 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         else:
                             endcard_raw = VideoFileClip(endcard_path, has_mask=True)
 
+                        if alpha_verbose:
+                            _log_mask_stats(endcard_raw.mask, "Endcard mask (pre-invert)", indent=4)
+
+                        if alpha_verbose:
+                            _log_mask_stats(endcard_raw.mask, "Endcard mask (pre-invert)", indent=4)
+
                         # Resize endcard to target resolution
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
                         if endcard_raw.mask is not None and endcard_clip.mask is None:
                             endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
+
+                        if alpha_verbose:
+                            _log_mask_stats(endcard_raw.mask, "Endcard mask (post-invert)", indent=4)
+
+                        if alpha_verbose:
+                            _log_mask_stats(endcard_raw.mask, "Endcard mask (post-invert)", indent=4)
 
                         # DEBUG: Export endcard alpha frames for inspection
                         if alpha_verbose and endcard_has_alpha:
