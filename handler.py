@@ -684,8 +684,9 @@ def generate_style_config(
             "auto_tune_step": 0.03
         },
         "endcard_alpha_fill": {
-            "enabled": True,
-            "force_chroma_key": False
+            "enabled": False,
+            "force_chroma_key": False,
+            "use_blur_background": False
         }
     }
     

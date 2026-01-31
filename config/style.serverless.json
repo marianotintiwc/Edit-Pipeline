@@ -68,8 +68,9 @@
   },
 
   "endcard_alpha_fill": {
-    "enabled": true,
-    "force_chroma_key": false
+    "enabled": false,
+    "force_chroma_key": false,
+    "use_blur_background": false
   },
   
   "audio": {

@@ -236,12 +236,13 @@ def _resolve_endcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any
     broll_cfg = style_config.get("broll_alpha_fill", {}) or {}
 
     if not endcard_cfg and broll_cfg:
-        endcard_cfg = {"enabled": True, **broll_cfg}
+        endcard_cfg = {"enabled": False, **broll_cfg}
 
     if not endcard_cfg:
-        endcard_cfg = {"enabled": True}
+        endcard_cfg = {"enabled": False}
 
     endcard_cfg.setdefault("force_chroma_key", False)
+    endcard_cfg.setdefault("use_blur_background", False)
 
     # Fill missing keys from broll config
     for key, val in broll_cfg.items():
@@ -1110,8 +1111,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             else:
                 clip = _resize_to_target(clip)
 
-            # Apply tiny audio fades only when transitions are disabled
-            if clip.audio and not transitions_enabled:
+            # Apply tiny audio fades to prevent pops at clip boundaries
+            if clip.audio:
                 clip = clip.set_audio(_apply_transition_audio_fades(clip.audio, clip.duration))
 
             video_clips.append(clip)
@@ -1229,8 +1230,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             sample_count=5
                         )
 
-                    # Apply alpha-fill background (same as b-roll) if enabled
-                    if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                    # Apply alpha-fill background only when explicitly enabled
+                    if endcard_alpha_config.get("enabled", False) and endcard_alpha_config.get("use_blur_background", False) and previous_fill_source:
                         blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                         slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
                         bg_path = _create_blurred_slow_background(
@@ -1250,6 +1251,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             size=TARGET_RESOLUTION
                         ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                         print("     Endcard alpha-fill: enabled (b-roll style)")
+                    elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
+                        print_clip_status("Endcard alpha-fill background disabled; preserving transparency", 3)
                     print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                     print(f"     Overlap: {endcard_overlap}s with last clip")
                 except Exception as e:
@@ -1372,7 +1375,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                 endcard_basename,
                                 sample_count=5
                             )
-                        if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                        if endcard_alpha_config.get("enabled", False) and endcard_alpha_config.get("use_blur_background", False) and previous_fill_source:
                             blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                             slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
                             bg_path = _create_blurred_slow_background(
@@ -1392,6 +1395,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                 size=TARGET_RESOLUTION
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
+                        elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
+                            print_clip_status("Endcard alpha-fill background disabled; preserving transparency", 3)
                         elif alpha_verbose and endcard_alpha_config.get("enabled", False):
                             if not endcard_has_alpha:
                                 print_clip_status("Endcard alpha-fill enabled but no alpha detected; skipping fill", 3)
@@ -1866,7 +1871,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
                         if endcard_raw.mask is not None and endcard_clip.mask is None:
                             endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
-                        if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
+                        if endcard_alpha_config.get("enabled", False) and endcard_alpha_config.get("use_blur_background", False) and previous_fill_source:
                             blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                             slow_factor = endcard_alpha_config.get("slow_factor", 1.5)
                             bg_path = _create_blurred_slow_background(
@@ -1886,6 +1891,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                                 size=TARGET_RESOLUTION
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
+                        elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
+                            print_clip_status("Endcard alpha-fill background disabled; preserving transparency", 3)
                         elif alpha_verbose and endcard_alpha_config.get("enabled", False):
                             if not endcard_has_alpha:
                                 print_clip_status("Endcard alpha-fill enabled but no alpha detected; skipping fill", 3)
