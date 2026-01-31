@@ -66,6 +66,11 @@
     "use_ffprobe": true,
     "verbose": true
   },
+
+  "endcard_alpha_fill": {
+    "enabled": true,
+    "force_chroma_key": false
+  },
   
   "audio": {
     "music_volume": 0.3,

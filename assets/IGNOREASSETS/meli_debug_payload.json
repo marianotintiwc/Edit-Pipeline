@@ -1,0 +1,65 @@
+{
+  "input": {
+    "job_id": "meli_debug_1_smart_2-MLA-female_alpha",
+    "geo": "MLA",
+    "output_folder": "MELI_Exports/debug",
+    "output_filename": "1_smart_2-MLA-female_ALPHA_DEBUG.mp4",
+    "clips": [
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs 28-1/1_smart_2-MLA-female/1_smart_2-MLA-female_scene_1_lipsync.mp4"
+      },
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs 28-1/1_smart_2-MLA-female/1_smart_2-MLA-female_scene_2_lipsync.mp4"
+      },
+      {
+        "type": "broll",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLA_9X16.mov"
+      },
+      {
+        "type": "scene",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Outputs 28-1/1_smart_2-MLA-female/1_smart_2-MLA-female_scene_3_lipsync.mp4"
+      },
+      {
+        "type": "endcard",
+        "url": "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MLA- Conseguí tu Point Smart.mov",
+        "overlap_seconds": 0.5
+      }
+    ],
+    "music_url": "random",
+    "subtitle_mode": "auto",
+    "edit_preset": "standard_vertical",
+    "style_overrides": {
+      "font": "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF",
+      "fontsize": 60,
+      "stroke_color": "#333333",
+      "stroke_width": 10,
+      "highlight": {
+        "color": "#333333",
+        "stroke_color": "#333333",
+        "stroke_width": 4
+      },
+      "alpha_detection": {
+        "use_ffprobe": true,
+        "verbose": true
+      },
+      "endcard_alpha_fill": {
+        "enabled": true,
+        "force_chroma_key": false
+      },
+      "endcard": {
+        "enabled": true,
+        "overlap_seconds": 0.5
+      },
+      "interpolation": {
+        "enabled": true,
+        "target_fps": 60,
+        "method": "RIFE"
+      },
+      "transcription": {
+        "model": "large"
+      }
+    }
+  }
+}

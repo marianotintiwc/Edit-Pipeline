@@ -57,6 +57,10 @@
         "use_ffprobe": true,
         "verbose": true
     },
+    "endcard_alpha_fill": {
+        "enabled": true,
+        "force_chroma_key": false
+    },
     "endcard": {
         "enabled": true,
         "overlap_seconds": 0.5,

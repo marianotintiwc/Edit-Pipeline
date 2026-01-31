@@ -236,7 +236,12 @@ def _resolve_endcard_alpha_config(style_config: Dict[str, Any]) -> Dict[str, Any
     broll_cfg = style_config.get("broll_alpha_fill", {}) or {}
 
     if not endcard_cfg and broll_cfg:
-        endcard_cfg = {"enabled": broll_cfg.get("enabled", False), **broll_cfg}
+        endcard_cfg = {"enabled": True, **broll_cfg}
+
+    if not endcard_cfg:
+        endcard_cfg = {"enabled": True}
+
+    endcard_cfg.setdefault("force_chroma_key", False)
 
     # Fill missing keys from broll config
     for key, val in broll_cfg.items():
@@ -1114,6 +1119,15 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         require_non_opaque=alpha_require_non_opaque
                     )
                     print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
+                    if alpha_verbose:
+                        has_non_opaque = _mask_has_non_opaque_alpha(
+                            endcard_path,
+                            sample_count=3,
+                            verbose=alpha_verbose,
+                            indent=4,
+                            label="endcard"
+                        )
+                        print_clip_status(f"Endcard non-opaque alpha present: {has_non_opaque}", 3)
 
                     if endcard_force_key:
                         similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -1166,6 +1180,19 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     if endcard_raw.mask is not None and endcard_clip.mask is None:
                         endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
 
+                    # DEBUG: Export endcard alpha frames for inspection
+                    if alpha_verbose and endcard_has_alpha:
+                        debug_folder = "/app/exports/debug"
+                        os.makedirs(debug_folder, exist_ok=True)
+                        endcard_basename = os.path.splitext(os.path.basename(endcard_path))[0]
+                        print_clip_status(f"DEBUG: Exporting alpha frames for {endcard_basename}...", 3)
+                        export_broll_with_alpha_debug(
+                            endcard_clip,
+                            debug_folder,
+                            endcard_basename,
+                            sample_count=5
+                        )
+
                     # Apply alpha-fill background (same as b-roll) if enabled
                     if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
                         blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
@@ -1213,7 +1240,25 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             require_non_opaque=alpha_require_non_opaque
                         )
                         print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
+                        if alpha_verbose:
+                            has_non_opaque = _mask_has_non_opaque_alpha(
+                                endcard_path,
+                                sample_count=3,
+                                verbose=alpha_verbose,
+                                indent=4,
+                                label="endcard"
+                            )
+                            print_clip_status(f"Endcard non-opaque alpha present: {has_non_opaque}", 3)
                         print_clip_status(f"Endcard alpha detected: {endcard_has_alpha}", 3)
+                        if alpha_verbose:
+                            has_non_opaque = _mask_has_non_opaque_alpha(
+                                endcard_path,
+                                sample_count=3,
+                                verbose=alpha_verbose,
+                                indent=4,
+                                label="endcard"
+                            )
+                            print_clip_status(f"Endcard non-opaque alpha present: {has_non_opaque}", 3)
 
                         if endcard_force_key:
                             similarity = endcard_alpha_config.get("chroma_key_similarity", 0.08)
@@ -1253,6 +1298,32 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
                         if endcard_raw.mask is not None and endcard_clip.mask is None:
                             endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
+
+                        # DEBUG: Export endcard alpha frames for inspection
+                        if alpha_verbose and endcard_has_alpha:
+                            debug_folder = "/app/exports/debug"
+                            os.makedirs(debug_folder, exist_ok=True)
+                            endcard_basename = os.path.splitext(os.path.basename(endcard_path))[0]
+                            print_clip_status(f"DEBUG: Exporting alpha frames for {endcard_basename}...", 3)
+                            export_broll_with_alpha_debug(
+                                endcard_clip,
+                                debug_folder,
+                                endcard_basename,
+                                sample_count=5
+                            )
+
+                        # DEBUG: Export endcard alpha frames for inspection
+                        if alpha_verbose and endcard_has_alpha:
+                            debug_folder = "/app/exports/debug"
+                            os.makedirs(debug_folder, exist_ok=True)
+                            endcard_basename = os.path.splitext(os.path.basename(endcard_path))[0]
+                            print_clip_status(f"DEBUG: Exporting alpha frames for {endcard_basename}...", 3)
+                            export_broll_with_alpha_debug(
+                                endcard_clip,
+                                debug_folder,
+                                endcard_basename,
+                                sample_count=5
+                            )
                         if endcard_alpha_config.get("enabled", False) and endcard_has_alpha and previous_fill_source:
                             blur_sigma = endcard_alpha_config.get("blur_sigma", 8)
                             slow_factor = endcard_alpha_config.get("slow_factor", 1.5)

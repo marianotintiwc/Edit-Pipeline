@@ -682,6 +682,10 @@ def generate_style_config(
             "auto_tune_min": 0.05,
             "auto_tune_max": 0.30,
             "auto_tune_step": 0.03
+        },
+        "endcard_alpha_fill": {
+            "enabled": True,
+            "force_chroma_key": False
         }
     }
     
