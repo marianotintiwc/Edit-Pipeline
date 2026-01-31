@@ -933,6 +933,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
 
     target_fps = get_target_fps(style_config)
     print(f"Processing {len(clips_data)} clips... (target_fps={target_fps})")
+    try:
+        clip_types = [(c.get("type") or "scene") for c in clips_data]
+        print(f"Clip types: {clip_types}")
+    except Exception:
+        pass
 
     # Separate endcard from regular clips
     endcard_clip_info = None
@@ -942,6 +947,8 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             endcard_clip_info = clip_info
         else:
             regular_clips.append(clip_info)
+    if endcard_clip_info is None:
+        print("⚠️  No endcard clip detected in clips.json")
 
     try:
         for i, clip_info in enumerate(regular_clips):
