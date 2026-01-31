@@ -2,6 +2,8 @@
 
 A video editing automation pipeline for UGC-style content (9:16 vertical format). Can run locally as a CLI or as a **RunPod Serverless API**.
 
+Note: After a RunPod rollback, manual redeploy or a fresh commit may be required to resume builds.
+
 ## Features
 - Concatenate video clips with smooth transitions
 - Add background music with loop and volume control
@@ -474,35 +476,71 @@ Podés activar esto con `style_overrides` cuando envías el payload.
 
 ## 🚀 RunPod Serverless Deployment
 
-**Docker Image:** `marianotintiwc/ugc-pipeline:latestv_1.02`
+**Docker Image:** `docker.io/marianotintiwc/edit-pipeline:latest`
 
 ### Quick Start
 
 1. **Build the Docker image:**
    ```bash
-  docker build -t marianotintiwc/ugc-pipeline:latestv_1.02 .
+  docker build -t docker.io/marianotintiwc/edit-pipeline:latest .
    ```
 
 2. **Test locally with GPU:**
    ```bash
-  docker run --gpus all -it marianotintiwc/ugc-pipeline:latestv_1.02 python startup_check.py
+  docker run --gpus all -it docker.io/marianotintiwc/edit-pipeline:latest python startup_check.py
    ```
 
 3. **Tag and push to Docker Hub:**
    ```bash
    # Tag adicional con fecha
-  docker tag marianotintiwc/ugc-pipeline:latestv_1.02 marianotintiwc/ugc-pipeline:2026-01-30
+  docker tag docker.io/marianotintiwc/edit-pipeline:latest docker.io/marianotintiwc/edit-pipeline:2026-01-30
    
   # Push todos los tags
-  docker push marianotintiwc/ugc-pipeline:latestv_1.02
-   docker push marianotintiwc/ugc-pipeline:2026-01-29
+  docker push docker.io/marianotintiwc/edit-pipeline:latest
+  docker push docker.io/marianotintiwc/edit-pipeline:2026-01-30
    ```
 
 4. **Deploy on RunPod:**
    - Go to RunPod Console → Serverless → New Endpoint
-  - Docker image: `marianotintiwc/ugc-pipeline:latestv_1.02`
+  - Docker image: `docker.io/marianotintiwc/edit-pipeline:latest`
    - Set environment variables (see below)
    - Deploy!
+
+### RunPod Helper CLI (Consolidated)
+
+All RunPod helper scripts were consolidated into a single CLI:
+
+`Helper Scripts/runpod_cli.py`
+
+This is useful for humans and agents because it standardizes:
+- Submitting jobs from a payload file
+- Polling and status checks
+- Updating the endpoint image (rolling release)
+
+Examples:
+
+```bash
+# Submit a job using the default payload
+python3 "Helper Scripts/runpod_cli.py" submit
+
+# Submit with a custom payload
+python3 "Helper Scripts/runpod_cli.py" submit --payload /path/to/payload.json
+
+# Poll a job
+python3 "Helper Scripts/runpod_cli.py" poll <job_id>
+
+# Check status once
+python3 "Helper Scripts/runpod_cli.py" status <job_id>
+
+# Update the endpoint image
+python3 "Helper Scripts/runpod_cli.py" update-image --image docker.io/marianotintiwc/edit-pipeline:latest
+```
+
+Environment variables loaded from `.env`:
+- RUNPOD_API_KEY
+- RUNPOD_ENDPOINT_ID
+
+Note: Legacy RunPod helper scripts were removed in favor of the consolidated CLI.
 
 ### Environment Variables
 
