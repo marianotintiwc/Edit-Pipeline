@@ -177,7 +177,12 @@ RUN if [ -f "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF" ]; then \
 # Pre-download Whisper Model (speeds up first job)
 # ─────────────────────────────────────────────────────────────────────────────
 # Pre-download "large" model to match style.json transcription config (~2.9GB)
-RUN python -c "import whisper; print('Downloading Whisper large model...'); whisper.load_model('large'); print('Whisper model cached successfully')"
+ARG SKIP_WHISPER_DOWNLOAD=0
+RUN if [ "$SKIP_WHISPER_DOWNLOAD" = "1" ]; then \
+        echo "Skipping Whisper model download"; \
+    else \
+        python -c "import whisper; print('Downloading Whisper large model...'); whisper.load_model('large'); print('Whisper model cached successfully')"; \
+    fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Startup Validation Script
