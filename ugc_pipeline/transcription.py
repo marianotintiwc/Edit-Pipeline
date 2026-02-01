@@ -2,6 +2,7 @@ import whisper
 import os
 import datetime
 import time
+import re
 from typing import Callable, Optional
 
 def format_timestamp(seconds: float) -> str:
@@ -21,12 +22,26 @@ def format_timestamp(seconds: float) -> str:
 
 import numpy as np
 
+def fix_tap_terminology(text: str) -> str:
+    """Normalize TAP terminology for Mercado Pago Tap jobs."""
+    if not text:
+        return text
+    # Replace "o TAP" / "a TAP" (case-insensitive) with "Tap"
+    text = re.sub(r"\b[oa]\s+TAP\b", "Tap", text, flags=re.IGNORECASE)
+    # Replace standalone uppercase TAP with Tap
+    text = re.sub(r"\bTAP\b", "Tap", text)
+    # Replace TEP variants with Tap
+    text = re.sub(r"\bTEP\b", "Tap", text, flags=re.IGNORECASE)
+    return text
+
+
 def transcribe_audio_array(
     audio_array: np.ndarray, 
     output_srt_path: str, 
     model_name: str = "small", 
     language: str = None, 
     initial_prompt: str = None,
+    is_tap_job: bool = False,
     word_level: bool = False,
     max_words: int = 1,
     silence_threshold: float = 0.5,
@@ -105,6 +120,8 @@ def transcribe_audio_array(
     options = {}
     if language:
         options["language"] = language
+    if is_tap_job and not initial_prompt:
+        initial_prompt = "Mercado Pago, Tap, contactless, payment, Tap to Pay, pagar con Tap."
     if initial_prompt:
         options["initial_prompt"] = initial_prompt
     if word_level:
@@ -177,6 +194,8 @@ def transcribe_audio_array(
             start = format_timestamp(segment["start"])
             end = format_timestamp(segment["end"])
             text = segment["text"].strip()
+            if is_tap_job:
+                text = fix_tap_terminology(text)
             
             f.write(f"{i+1}\n")
             f.write(f"{start} --> {end}\n")

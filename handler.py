@@ -1062,13 +1062,38 @@ def run_pipeline(
                         whisper_language = job_input.get_whisper_language()
                         ctx.log(f"Whisper language: {whisper_language} (geo: {job_input.geo or 'not specified'})")
                         ctx.log(f"Audio samples for Whisper: {audio_array.shape[0]}")
+
+                        def _is_tap_job() -> bool:
+                            tap_markers = []
+                            if job_input.output_folder:
+                                tap_markers.append(job_input.output_folder)
+                            if job_input.output_filename:
+                                tap_markers.append(job_input.output_filename)
+                            if job_input.style_overrides:
+                                endcard_url = job_input.style_overrides.get("endcard", {}).get("url")
+                                if endcard_url:
+                                    tap_markers.append(endcard_url)
+                            if job_input.clips:
+                                for clip in job_input.clips:
+                                    if isinstance(clip, dict):
+                                        url = clip.get("url")
+                                    else:
+                                        url = getattr(clip, "url", None)
+                                    if url:
+                                        tap_markers.append(url)
+                            return any("tap" in (m or "").lower() for m in tap_markers)
+
+                        is_tap_job = _is_tap_job()
+                        tap_prompt = "Mercado Pago, Tap, contactless, payment, Tap to Pay, pagar con Tap."
+                        initial_prompt = tap_prompt if is_tap_job else transcription_config.get("keywords")
                         
                         transcribe_audio_array(
                             audio_array,
                             srt_path,
                             model_name=transcription_config.get("model", "small"),
                             language=whisper_language,
-                            initial_prompt=transcription_config.get("keywords"),
+                            initial_prompt=initial_prompt,
+                            is_tap_job=is_tap_job,
                             word_level=transcription_config.get("word_level", True),
                             max_words=transcription_config.get("max_words_per_segment", 4),
                             silence_threshold=transcription_config.get("max_delay_seconds", 0.5),

@@ -1382,6 +1382,12 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         print("     Endcard alpha-fill: enabled (b-roll style)")
                     elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
                         print_clip_status("Endcard alpha-fill background disabled; preserving transparency", 3)
+
+                    if endcard_clip.audio:
+                        endcard_clip = endcard_clip.set_audio(
+                            _apply_transition_audio_fades(endcard_clip.audio, endcard_clip.duration)
+                        )
+
                     print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                     print(f"     Overlap: {endcard_overlap}s with last clip")
                 except Exception as e:
@@ -1531,6 +1537,12 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                                 print_clip_status("Endcard alpha-fill enabled but no alpha detected; skipping fill", 3)
                             elif not previous_fill_source:
                                 print_clip_status("Endcard alpha-fill enabled but no previous clip available; skipping fill", 3)
+
+                        if endcard_clip.audio:
+                            endcard_clip = endcard_clip.set_audio(
+                                _apply_transition_audio_fades(endcard_clip.audio, endcard_clip.duration)
+                            )
+
                         print(f"     Endcard: {os.path.basename(endcard_path)} ({endcard_clip.duration:.2f}s)")
                         print(f"     Overlap: {endcard_overlap}s with last clip")
                     except Exception as e:

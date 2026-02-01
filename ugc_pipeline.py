@@ -254,6 +254,20 @@ def main():
     word_level = transcription_config.get("word_level", False)
     max_words = transcription_config.get("max_words_per_segment", 1)
     max_delay = transcription_config.get("max_delay_seconds", 0.5)
+
+    def infer_tap_from_clips_config(path: str) -> bool:
+        if not path or not os.path.isfile(path):
+            return False
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for clip in data.get("clips", []):
+                text = (clip.get("path") or clip.get("url") or "").lower()
+                if "tap" in text:
+                    return True
+        except Exception:
+            return False
+        return False
     
     # Detect language from project folder GEO code
     transcription_language = "es"  # Default to Spanish
@@ -317,6 +331,21 @@ def main():
         elif geo_hint == "MLM":
             transcription_language = "es"
             print_status("GEO: MLM (Mexico) → Spanish", "INFO")
+
+    is_tap_job = False
+    tap_markers = [
+        output_path,
+        clips_config_path or "",
+        os.path.basename(clips_config_path) if clips_config_path else "",
+        keywords or ""
+    ]
+    if any("tap" in (m or "").lower() for m in tap_markers):
+        is_tap_job = True
+    elif infer_tap_from_clips_config(clips_config_path or ""):
+        is_tap_job = True
+
+    tap_prompt = "Mercado Pago, Tap, contactless, payment, Tap to Pay, pagar con Tap."
+    initial_prompt = tap_prompt if is_tap_job else keywords
     
     # Workflow:
     # 1. Check for manual override: assets/subs/subtitles.srt
@@ -364,7 +393,8 @@ def main():
                 auto_subs_path, 
                 model_name=model_name, 
                 language=transcription_language, 
-                initial_prompt=keywords,
+                initial_prompt=initial_prompt,
+                is_tap_job=is_tap_job,
                 word_level=word_level,
                 max_words=max_words,
                 silence_threshold=max_delay
