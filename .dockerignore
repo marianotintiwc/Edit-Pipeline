@@ -115,3 +115,6 @@ Jenkinsfile
 *.backup
 .env.local
 .env.*.local
+
+# Large asset folders for testing/development
+assets/IGNOREASSETS/
