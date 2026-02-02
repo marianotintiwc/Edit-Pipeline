@@ -26,12 +26,15 @@ def fix_tap_terminology(text: str) -> str:
     """Normalize TAP terminology for Mercado Pago Tap jobs."""
     if not text:
         return text
-    # Replace "o TAP" / "a TAP" (case-insensitive) with "Tap"
+    # Replace "o TAP" / "a TAP" / "o Tap" / "a Tap" (case-insensitive) with "Tap"
     text = re.sub(r"\b[oa]\s+TAP\b", "Tap", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b[oa]\s+Tap\b", "Tap", text)
     # Replace standalone uppercase TAP with Tap
     text = re.sub(r"\bTAP\b", "Tap", text)
     # Replace TEP variants with Tap
     text = re.sub(r"\bTEP\b", "Tap", text, flags=re.IGNORECASE)
+    # Normalize "Mercado Pago" variations (mercadopago, mercado pago, etc.)
+    text = re.sub(r"\bmercado\s*pago\b", "Mercado Pago", text, flags=re.IGNORECASE)
     return text
 
 

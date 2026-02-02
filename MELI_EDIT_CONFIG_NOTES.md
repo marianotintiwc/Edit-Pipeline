@@ -337,3 +337,77 @@ python tools.py status --tail 20     # Latest progress + last 20 log lines
 ```
 
 See README.md for full documentation.
+---
+
+## 📦 Batch Edit from S3 CSV (Production Workflow)
+
+### Successful Production Run (February 2026)
+
+Processed **229 videos** in a single batch submission:
+- **SMART**: 174 videos (MLA:37, MLB:64, MLC:38, MLM:35)
+- **TAP**: 55 videos (MLB only)
+
+### Three-Step Workflow
+
+```bash
+# Step 1: Export S3 assets to CSV (s3_assets_report.csv)
+# Contains: Parent Folder, Filename, Type, Public URL, Finished
+
+# Step 2: Structure the CSV with product/GEO mapping
+python3 assets/IGNOREASSETS/build_s3_assets_mapping.py
+# Output: assets/IGNOREASSETS/s3_assets_structured.csv (229 rows)
+
+# Step 3: Submit all jobs to RunPod
+python3 "Helper Scripts/run_meli_from_structured_csv.py"
+# Result: 229/229 jobs submitted
+```
+
+### Folder Naming Convention
+
+The script parses folder names to extract product type and GEO:
+
+| Pattern | Product | GEO | Detection |
+|---------|---------|-----|-----------|
+| `56_smart_2-MLB-male` | SMART | MLB | `_smart` + `-(MLB)-` |
+| `500_tap-MLB-female` | TAP | MLB | `_tap` + `-(MLB)-` |
+| `1_smart_2-MLA-female` | SMART | MLA | `_smart` + `-(MLA)-` |
+
+**Regex patterns:**
+- Product: `_tap` or `_tap-` → TAP, otherwise `_smart` → SMART
+- GEO: `-(ML[ABLCM])-` captures MLA/MLB/MLC/MLM
+
+### Asset Mapping by Product
+
+| Product | GEO | Endcard File | B-Roll File |
+|---------|-----|--------------|-------------|
+| **SMART** | MLA | `MLA- Conseguí tu Point Smart.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLA_9X16.mov` |
+| **SMART** | MLB | `MLB- Compre sua maquininha.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLB_9X16.mov` |
+| **SMART** | MLC | `MLC- Compra tu Point Smart.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLC_9X16.mov` |
+| **SMART** | MLM | `MLM- Consigue tu Terminal.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLM_9X16.mov` |
+| **TAP** | MLB | `MLB - Venda com Tap do Mercado Pago.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_TAP_MLB_9X16.mov` |
+
+### Final Clip Structure
+
+Each job uses this exact clip order:
+```
+introcard → scene1 → scene2 → broll → scene3 → endcard
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `s3_assets_report.csv` | Raw S3 bucket export (input) |
+| `assets/IGNOREASSETS/mov_mapping.csv` | Maps (GEO, Product) → Endcard + B-Roll |
+| `assets/IGNOREASSETS/s3_assets_structured.csv` | Processed CSV ready for batch (output) |
+| `assets/IGNOREASSETS/build_s3_assets_mapping.py` | Script to structure the CSV |
+| `Helper Scripts/run_meli_from_structured_csv.py` | Script to submit batch jobs |
+| `presets/meli_cases.json` | Base style config + default introcard URL |
+
+### What Worked Well
+
+1. **Automated product detection** - No manual tagging needed
+2. **Single script submission** - 229 jobs in one command
+3. **Rate limiting** - 0.5s delay every 10 jobs prevents API throttling
+4. **Correct asset mapping** - TAP vs SMART automatically routed to correct endcard/b-roll
+5. **Consistent output naming** - `{parent_folder}_MELI_EDIT.mp4`

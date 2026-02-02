@@ -1605,3 +1605,148 @@ python tools.py status --tail 20    # Show last 20 log lines
 | Numbers | `--filter "2,4,6,8"` | Specific project numbers |
 | Single | `--filter 16` | Single project by number |
 | Name | `--filter "incentivos"` | Match folder name |
+---
+
+## 📦 Batch Edit from S3 CSV (MELI Production Workflow)
+
+This is the **production workflow** for processing large batches of lipsync videos from S3. Successfully used to process 229 videos in a single batch (February 2026).
+
+### Overview
+
+The workflow processes lipsync videos stored in S3, automatically mapping them to the correct endcard and b-roll based on product type (SMART/TAP) and GEO (MLA/MLB/MLC/MLM).
+
+```
+┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+│ s3_assets_      │ → │ build_s3_assets_     │ → │ s3_assets_      │
+│ report.csv      │    │ mapping.py           │    │ structured.csv  │
+│ (raw S3 list)   │    │ (parse & map)        │    │ (ready for edit)│
+└─────────────────┘    └──────────────────────┘    └─────────────────┘
+                                                            │
+                                                            ▼
+                       ┌──────────────────────┐    ┌─────────────────┐
+                       │ run_meli_from_       │ ← │ meli_cases.json │
+                       │ structured_csv.py    │    │ (base style)    │
+                       │ (submit to RunPod)   │    └─────────────────┘
+                       └──────────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────────────────┐
+                       │ RunPod Endpoint (v1.07)     │
+                       │ 229 parallel jobs           │
+                       │ Output: MELI_Exports/       │
+                       └─────────────────────────────┘
+```
+
+### Step 1: Generate S3 Assets Report
+
+Export your S3 bucket contents to CSV (can use AWS CLI or S3 console):
+
+```csv
+Parent Folder,Filename,Type,Public URL,Finished
+56_smart_2-MLB-male,56_smart_2-MLB-male_scene_1_lipsync.mp4,video,https://s3.../..._scene_1_lipsync.mp4,Yes
+56_smart_2-MLB-male,56_smart_2-MLB-male_scene_2_lipsync.mp4,video,https://s3.../..._scene_2_lipsync.mp4,Yes
+56_smart_2-MLB-male,56_smart_2-MLB-male_scene_3_lipsync.mp4,video,https://s3.../..._scene_3_lipsync.mp4,Yes
+```
+
+Save as: `Edit-Pipeline/s3_assets_report.csv`
+
+### Step 2: Structure the CSV
+
+Run the mapping script to parse product type, GEO, and map endcard/b-roll:
+
+```bash
+python3 assets/IGNOREASSETS/build_s3_assets_mapping.py
+```
+
+This:
+- Parses parent folder names (e.g., `56_smart_2-MLB-male` → SMART/MLB)
+- Filters to only include folders with all 3 lipsync scenes
+- Maps to correct endcard and b-roll from `mov_mapping.csv`
+- Outputs: `assets/IGNOREASSETS/s3_assets_structured.csv`
+
+**Output structure:**
+```csv
+Parent Folder,Type,GEO,Scene1_URL,Scene2_URL,Scene3_URL,Endcard_File,Endcard_Local_Path,Endcard_S3_URL,Broll_File,Broll_Local_Path,Broll_S3_URL
+56_smart_2-MLB-male,SMART,MLB,https://...scene_1_lipsync.mp4,https://...scene_2_lipsync.mp4,https://...scene_3_lipsync.mp4,MLB- Compre sua maquininha.mov,...
+500_tap-MLB-male,TAP,MLB,https://...scene_1_lipsync.mp4,https://...scene_2_lipsync.mp4,https://...scene_3_lipsync.mp4,MLB - Venda com Tap do Mercado Pago.mov,...
+```
+
+### Step 3: Submit Batch Jobs
+
+```bash
+python3 "Helper Scripts/run_meli_from_structured_csv.py"
+```
+
+This submits all rows to RunPod with the correct clip structure:
+```
+introcard → scene1 → scene2 → broll → scene3 → endcard
+```
+
+### Asset Mapping by Product Type
+
+| Product | GEO | Endcard | B-Roll |
+|---------|-----|---------|--------|
+| **SMART** | MLA | `MLA- Conseguí tu Point Smart.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLA_9X16.mov` |
+| **SMART** | MLB | `MLB- Compre sua maquininha.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLB_9X16.mov` |
+| **SMART** | MLC | `MLC- Compra tu Point Smart.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLC_9X16.mov` |
+| **SMART** | MLM | `MLM- Consigue tu Terminal.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_PROYECTO_TECH_MLM_9X16.mov` |
+| **TAP** | MLB | `MLB - Venda com Tap do Mercado Pago.mov` | `MP_SELLERS_AI_VIDEO_GENERICO_TAP_MLB_9X16.mov` |
+
+### Folder Naming Convention
+
+The script parses product type and GEO from folder names:
+
+| Pattern | Product | GEO |
+|---------|---------|-----|
+| `56_smart_2-MLB-male` | SMART | MLB |
+| `500_tap-MLB-female` | TAP | MLB |
+| `1_smart_2-MLA-female` | SMART | MLA |
+| `699_smart_2-MLM-male` | SMART | MLM |
+
+**Regex patterns:**
+- Product: `_tap` or `_tap-` → TAP, `_smart` → SMART
+- GEO: `-(ML[ABLCM])-` captures MLA/MLB/MLC/MLM
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `assets/IGNOREASSETS/mov_mapping.csv` | Maps (GEO, Product) → Endcard + B-Roll files |
+| `assets/IGNOREASSETS/s3_assets_report.csv` | Raw S3 bucket export |
+| `assets/IGNOREASSETS/s3_assets_structured.csv` | Processed mapping ready for batch |
+| `presets/meli_cases.json` | Base style + default introcard URL |
+
+### Production Run Example (Feb 2026)
+
+```bash
+# Step 1: Build structured CSV
+python3 assets/IGNOREASSETS/build_s3_assets_mapping.py
+# Output: Wrote 229 parents to s3_assets_structured.csv
+# Summary: SMART (MLA:37, MLB:64, MLC:38, MLM:35) + TAP (MLB:55)
+
+# Step 2: Submit all jobs
+python3 "Helper Scripts/run_meli_from_structured_csv.py"
+# Output: Found 229 rows to process
+# [1/229] 10_smart_2-MLB-female (SMART/MLB): submitted b69a0b2b-...
+# [2/229] 10_tap-MLB-male (TAP/MLB): submitted e90c5f3c-...
+# ...
+# === Summary ===
+# Submitted: 229/229 jobs
+```
+
+### Key Scripts
+
+**`assets/IGNOREASSETS/build_s3_assets_mapping.py`:**
+- Parses `s3_assets_report.csv`
+- Extracts product type (SMART/TAP) and GEO from folder names
+- Filters to folders with all 3 lipsync scenes
+- Maps to endcard/b-roll from `mov_mapping.csv`
+- Outputs `s3_assets_structured.csv`
+
+**`Helper Scripts/run_meli_from_structured_csv.py`:**
+- Reads `s3_assets_structured.csv`
+- Loads base style from `presets/meli_cases.json`
+- Builds payload with: introcard → scene1 → scene2 → broll → scene3 → endcard
+- Submits to RunPod endpoint `h55ft9cy7fyi1d`
+- Rate limiting: 0.5s delay every 10 jobs
+- Output folder: `MELI_Exports/2026-02/{parent}_MELI_EDIT.mp4`
