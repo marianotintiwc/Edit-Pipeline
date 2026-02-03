@@ -1631,7 +1631,7 @@ The workflow processes lipsync videos stored in S3, automatically mapping them t
                                 │
                                 ▼
                        ┌─────────────────────────────┐
-                       │ RunPod Endpoint (v1.07)     │
+                       │ RunPod Endpoint (v1.12)     │
                        │ 229 parallel jobs           │
                        │ Output: MELI_Exports/       │
                        └─────────────────────────────┘

@@ -1,6 +1,8 @@
 .env
+.DS_Store
 __pycache__/
 *.pyc
+*.log
 logs/
 batch_logs/
 batch_temp/
