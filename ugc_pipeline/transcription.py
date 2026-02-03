@@ -41,7 +41,7 @@ def fix_tap_terminology(text: str) -> str:
 def transcribe_audio_array(
     audio_array: np.ndarray, 
     output_srt_path: str, 
-    model_name: str = "small", 
+    model_name: str = "large", 
     language: str = None, 
     initial_prompt: str = None,
     is_tap_job: bool = False,

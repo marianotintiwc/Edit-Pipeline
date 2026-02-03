@@ -1,0 +1,148 @@
+Using endpoint h55ft9cy7fyi1d
+Reading from: /Users/marianotinti/Desktop/UGC EDITOR/USER for Edit - MLC_Approved.csv
+Output folder: MP-Users/MLC_Outputs
+
+CSV columns: ['Product', 'GEO', 'Gender', 'scene_1_lipsync', 'scene_2_lipsync', 'scene_3_lipsync', 'Broll', 'Endcard', 'BROLL S3', 'ENDCARD S3']
+
+Row 1: 119_5_000_de_descuento_en_tus_cuentas-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: a6a10be6-5bfb-4c54-9557-cdcd80d9c34c-u2
+Row 2: 120_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: eeba3fbf-5913-4191-b91e-207f2b17992e-u2
+Row 3: 121_5_000_de_descuento_en_tus_cuentas-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 7e60460c-9c04-4a8c-ae47-f885ba03bbc6-u1
+Row 4: 122_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 54d2534a-325c-4f69-8396-1348757511ce-u1
+Row 5: 123_5_000_de_descuento_en_tus_cuentas-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 248ffb05-31d8-49dd-a594-0f0e86cc2ca9-u2
+Row 6: 124_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: fcea686e-6225-4e27-8111-b5e39fb0008c-u1
+Row 7: 125_5_000_de_descuento_en_tus_cuentas-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 4125b352-9dd4-4bf5-a807-825bff426f13-u2
+Row 8: 126_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 2372b497-4991-42f8-a012-a653bc100f74-u2
+Row 9: 127_5_000_de_descuento_en_tus_cuentas-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: ffd7762e-77be-490a-9541-72df2c5e4cf4-u1
+Row 10: 128_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: a0f7f91c-0553-4349-90d2-554f606e7359-u2
+Row 11: 3_5_000_de_descuento_en_tus_cuentas-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/5K-DESCUENTO-CUENTAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 6e89512e-1968-4885-9a32-f5f6d510caf3-u1
+Row 12: 129_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: 68fa8890-0f95-49a2-8b9c-846e15d237a4-u1
+Row 13: 130_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: 1870ba43-c2d4-453e-b146-1feffff4671e-u2
+Row 14: 131_ganancias_diarias-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: 6a5c76f4-40ff-40a7-8af0-62559456739d-u2
+Row 15: 133_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: 404b9fff-70e8-4272-b5cf-de087e9a9af2-u1
+Row 16: 134_ganancias_diarias-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: e272ce8f-93a4-4e88-9c08-a65e7039e84b-u2
+Row 17: 135_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: dbb72c02-ac96-41cf-a974-784fb11bf21e-u1
+Row 18: 136_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: cf029712-6a4a-4277-9e48-87bee707c2b9-u1
+Row 19: 138_ganancias_diarias-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: cfd15664-320a-4af8-8820-6ab60aceced2-u1
+Row 20: 4_ganancias_diarias-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: f37f193c-ed3f-4680-b395-73b74f485f62-u2
+Row 21: 5_ganancias_diarias-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/GANANCIAS-DIARIAS-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ten%20ganancias%20diarias.mov
+  -> submitted: c164613e-fc16-4986-ba05-854a65542d4f-u1
+Row 22: 143_mete_10_000_y_llevate_3_500_extras-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/INGRESO-APP-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 40e5b8cd-08f8-4988-aa78-47111786c19f-u2
+Row 23: 145_mete_10_000_y_llevate_3_500_extras-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/INGRESO-APP-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: c7ac0328-cb80-46d3-80dd-903d61969358-u2
+Row 24: 6_mete_10_000_y_llevate_3_500_extras-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/INGRESO-APP-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: 28c8fe25-5e4f-420b-81b5-1784ef0cc121-u2
+Row 25: 7_mete_10_000_y_llevate_3_500_extras-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/INGRESO-APP-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-%20Ahorra%20con%20tu%20cuenta%20digital.mov
+  -> submitted: bbecf9b5-f5b7-40ae-ad51-f1d6ae8ebf05-u2
+Row 26: 109_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: 0370e9a5-aa02-4342-aea7-45de1a6892c0-u2
+Row 27: 110_tarjeta_mercado_pago-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: edc014db-0ba7-4248-a3b9-0589930ddf89-u1
+Row 28: 111_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: 0fd10a18-d551-4622-93bb-5f867ec2bab7-u2
+Row 29: 112_tarjeta_mercado_pago-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: cf8a68ed-03d2-489c-80c0-a59dfbb54099-u2
+Row 30: 113_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: 38d41520-e93e-4d79-a116-743441dc0dd1-u1
+Row 31: 115_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: 73850af9-af59-4080-a0f6-0d0eb272952f-u1
+Row 32: 117_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: 33d895c8-8a57-44c0-b3d9-e67624edde89-u2
+Row 33: 118_tarjeta_mercado_pago-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: f59fe6eb-0cd7-4e1c-bacc-f4193f682bb8-u1
+Row 34: 1_tarjeta_mercado_pago-MLC-female
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: f4748b77-20cd-4fe8-ac08-63fe90af8d64-u2
+Row 35: 2_tarjeta_mercado_pago-MLC-male
+  Broll: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/TARJETA-MERCADO-PAGO-MLC.mov
+  Endcard: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Users/Assets/MLC-+Pide+tu+Tarjeta+Mercado+Pago%C2%A0.mov
+  -> submitted: f0cda014-b855-4006-a220-4befa1a74bc4-u1
+
+Submitted 35/35 jobs

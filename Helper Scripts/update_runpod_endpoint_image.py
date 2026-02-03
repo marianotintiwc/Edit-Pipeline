@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 
 REPO = Path("/Users/marianotinti/Desktop/UGC EDITOR/Edit-Pipeline")
-TARGET_IMAGE = "docker.io/marianotintiwc/edit-pipeline:v1.07"
+TARGET_IMAGE = "docker.io/marianotintiwc/edit-pipeline:v1.09"
 
 
 def load_env(env_path: Path) -> None:

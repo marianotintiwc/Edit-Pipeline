@@ -614,7 +614,7 @@ def generate_style_config(
             "scale_end": 1.0
         },
         "transcription": {
-            "model": "small",
+            "model": "large",
             "keywords": "UGC, TikTok, Marketing",
             "word_level": True,
             "max_words_per_segment": 4,
@@ -1090,7 +1090,7 @@ def run_pipeline(
                         transcribe_audio_array(
                             audio_array,
                             srt_path,
-                            model_name=transcription_config.get("model", "small"),
+                            model_name=transcription_config.get("model", "large"),
                             language=whisper_language,
                             initial_prompt=initial_prompt,
                             is_tap_job=is_tap_job,

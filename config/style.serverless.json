@@ -23,7 +23,7 @@
   },
   
   "transcription": {
-    "model": "small",
+    "model": "large",
     "keywords": "UGC, TikTok, Marketing",
     "word_level": true,
     "max_words_per_segment": 4,
