@@ -38,7 +38,10 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Stroke Width** | `10` | Thick for visibility |
 | **Highlight Color** | `#333333` | Karaoke highlight |
 | **Endcard Overlap** | `0.5s` | Smooth transition |
-| **Target FPS** | `60` | RIFE interpolation |
+| **Input FPS** | `24` | Source video FPS (lipsync outputs) |
+| **Target FPS** | `60` | RIFE interpolation output |
+| **Music Volume** | `0.04` | Background music level |
+| **Music Peak** | `0.06` | Peak limiter threshold |
 | **Whisper Model** | `large` | Best accuracy |
 | **Color Grading** | `disabled` | Raw look |
 
@@ -279,6 +282,9 @@ python run_meli_edit.py --jobs jobs.json --workers 3
 | `clips[].end_time` | `float` \| `null` | Segundo donde termina. **Negativo = cortar desde el final** (ej: `-0.1`) |
 | `music_url` | `"random"` \| URL \| `null` | `"random"` = música aleatoria de `assets/audio/` |
 | `subtitle_mode` | `auto` \| `manual` \| `none` | Modo de subtítulos |
+| `input_fps` | `float` (default: `24`) | FPS del video fuente para interpolación RIFE. Usar `24` para lipsync, `30` para cámara raw |
+| `style_overrides.audio.music_volume` | `float` (default: `0.04`) | Volumen de música de fondo |
+| `style_overrides.audio.music_peak` | `float` (default: `0.06`) | Límite de picos de volumen de música |
 | `style_overrides.transcription.model` | `tiny`, `base`, `small`, `medium`, `large` | Modelo Whisper |
 
 ### 📍 Orden de Clips
@@ -655,6 +661,7 @@ Send a POST request to your RunPod endpoint with this JSON body:
 | **Processing** |
 | `edit_preset` | `string` | No | `standard_vertical` | Editing preset (see below) |
 | `enable_interpolation` | `bool` | No | `true` | Enable RIFE frame interpolation |
+| `input_fps` | `float` | No | `24` | Source video FPS for RIFE interpolation (e.g., 24, 30). Must match your source clips. |
 | `rife_model` | `string` | No | `rife-v4` | RIFE model variant |
 | `style_overrides` | `object` | No | `null` | Override style.json settings |
 
@@ -684,6 +691,7 @@ Each clip in the `clips` array:
 | `subtitle_mode` | `string` | No | `auto` | `auto`, `manual`, or `none` |
 | `manual_srt_url` | `string` | No | `null` | SRT URL if `subtitle_mode=manual` |
 | `enable_interpolation` | `bool` | No | `true` | Enable RIFE frame interpolation |
+| `input_fps` | `float` | No | `24` | Source video FPS for RIFE interpolation (e.g., 24, 30). Must match your source clips. |
 | `rife_model` | `string` | No | `rife-v4` | RIFE model variant |
 | `style_overrides` | `object` | No | `null` | Override style.json settings |
 
@@ -1631,7 +1639,7 @@ The workflow processes lipsync videos stored in S3, automatically mapping them t
                                 │
                                 ▼
                        ┌─────────────────────────────┐
-                       │ RunPod Endpoint (v1.12)     │
+                       │ RunPod Endpoint (v1.07)     │
                        │ 229 parallel jobs           │
                        │ Output: MELI_Exports/       │
                        └─────────────────────────────┘

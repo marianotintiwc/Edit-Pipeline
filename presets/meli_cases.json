@@ -22,7 +22,7 @@
     "postprocess": {
       "frame_interpolation": {
         "enabled": true,
-        "input_fps": 30,
+        "input_fps": 24,
         "target_fps": 60,
         "model": "rife-v4",
         "gpu_id": 0

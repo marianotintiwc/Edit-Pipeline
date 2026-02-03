@@ -123,7 +123,8 @@ Content-Type: application/json
 | `loop_music` | bool | `true` | Loop music to match video length |
 | `subtitle_mode` | string | `"auto"` | `"auto"` (Whisper), `"manual"` (provide SRT), or `"none"` |
 | `manual_srt_url` | string | `null` | URL to SRT file (required if `subtitle_mode: "manual"`) |
-| `enable_interpolation` | bool | `true` | Enable RIFE frame interpolation (30→60fps) |
+| `enable_interpolation` | bool | `true` | Enable RIFE frame interpolation |
+| `input_fps` | float | `24` | Source video frame rate for RIFE interpolation (e.g., 24, 30). Must match your source clips. |
 | `rife_model` | string | `"rife-v4"` | RIFE model: `"rife-v4"` or `"rife-v4.6"` |
 | `style_overrides` | object | `null` | Override any `style.json` settings |
 | `output_filename` | string | auto | Custom output filename |
@@ -152,6 +153,57 @@ Content-Type: application/json
 - `"end_time": 10.0` — Cut video at 10 seconds
 - `"end_time": -0.5` — Cut 0.5 seconds before the natural end
 - `"start_time": 2.0, "end_time": 8.0` — Use only seconds 2-8
+
+---
+
+## Frame Interpolation (RIFE)
+
+RIFE interpolates source frames to achieve smooth 60fps output.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enable_interpolation` | `true` | Enable/disable RIFE |
+| `input_fps` | `24` | Source video FPS. **Must match your clips** (e.g., 24 for lipsync outputs, 30 for raw camera footage) |
+| `rife_model` | `"rife-v4"` | Model variant |
+
+**Target FPS:** Always 60 (hardcoded).
+
+**Example:** If your source videos are 30fps:
+```json
+{
+  "input": {
+    "clips": [...],
+    "input_fps": 30
+  }
+}
+```
+
+---
+
+## Audio Processing
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `music_volume` | `0.04` | Background music volume (0.0-1.0) |
+| `music_peak` | `0.06` | Peak limiter threshold — prevents volume spikes |
+| `loop_music` | `true` | Loop music to match video length |
+
+The peak limiter automatically reduces music volume if it exceeds the threshold, preventing harsh spikes in the final mix.
+
+**Override via style_overrides:**
+```json
+{
+  "input": {
+    "clips": [...],
+    "style_overrides": {
+      "audio": {
+        "music_volume": 0.04,
+        "music_peak": 0.06
+      }
+    }
+  }
+}
+```
 
 ---
 
@@ -398,7 +450,8 @@ Based on `style.json` configuration:
 | **Color Grading** | Brightness, contrast, saturation adjustments |
 | **Film Grain** | Subtle grain overlay for cinematic look |
 | **Vignette** | Edge darkening effect |
-| **Frame Interpolation** | RIFE 30→60fps upscaling |
+| **Frame Interpolation** | RIFE `input_fps`→60fps upscaling (default input: 24fps, configurable via payload) |
+| **Music Peak Limiter** | Prevents music volume spikes above threshold (default: 0.06) |
 | **Endcard** | Auto-appended based on GEO with 1.25s overlap |
 
 ---

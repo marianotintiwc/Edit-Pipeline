@@ -31,7 +31,7 @@ Input Schema:
         
         # === MUSIC ===
         "music_url": str | "random" | None,    # NEW: "random" picks from assets/audio
-        "music_volume": float,                 # 0.0 - 1.0 (default: 0.3)
+        "music_volume": float,                 # 0.0 - 1.0 (default: 0.04)
         "loop_music": bool,                    # Loop music to video length (default: true)
         
         # === SUBTITLES ===
@@ -42,6 +42,7 @@ Input Schema:
         "edit_preset": str,                    # "standard_vertical", "no_interpolation", "no_subtitles", "simple_concat"
         "enable_interpolation": bool,          # Enable RIFE (default: true)
         "rife_model": str,                     # "rife-v4" | "rife-v4.6" (default: "rife-v4")
+        "input_fps": float | int,              # Source FPS for interpolation (default: 24)
         "style_overrides": dict | None         # Partial style.json overrides
     }
     
@@ -195,12 +196,13 @@ class JobInput:
     # Processing options
     edit_preset: EditPreset = EditPreset.STANDARD_VERTICAL
     music_url: Optional[str] = None  # Can be URL, "random", or None
-    music_volume: float = 0.3
+    music_volume: float = 0.04
     loop_music: bool = True
     subtitle_mode: SubtitleMode = SubtitleMode.AUTO
     manual_srt_url: Optional[str] = None
     enable_interpolation: bool = True
     rife_model: str = "rife-v4"
+    input_fps: float = 24
     style_overrides: Optional[Dict[str, Any]] = None
     output_filename: Optional[str] = None
     output_folder: Optional[str] = None  # Custom S3 folder path (e.g., "TAP_Exports/2026-01")
@@ -232,6 +234,13 @@ class JobInput:
         # Validate music volume
         if self.music_volume < 0.0 or self.music_volume > 1.0:
             raise ValueError(f"music_volume must be 0.0-1.0, got {self.music_volume}")
+
+        # Validate input fps
+        if self.input_fps is not None:
+            if not isinstance(self.input_fps, (int, float)) or isinstance(self.input_fps, bool):
+                raise ValueError(f"input_fps must be a number, got {self.input_fps}")
+            if self.input_fps <= 0:
+                raise ValueError(f"input_fps must be > 0, got {self.input_fps}")
         
         # Validate subtitle mode
         if self.subtitle_mode == SubtitleMode.MANUAL and not self.manual_srt_url:
@@ -641,7 +650,7 @@ def generate_style_config(
             "enabled": True,
             "frame_interpolation": {
                 "enabled": job_input.enable_interpolation,
-                "input_fps": 24,
+                "input_fps": job_input.input_fps,
                 "target_fps": 60,
                 "model": job_input.rife_model,
                 "gpu_id": 0
@@ -767,6 +776,7 @@ VALID_INPUT_KEYS = {
     "edit_preset",
     "enable_interpolation",
     "rife_model",
+    "input_fps",
     "style_overrides",
     "output_filename",
     "output_folder",
@@ -899,6 +909,12 @@ def validate_payload(job_input_raw: Dict[str, Any], ctx: ProcessingContext) -> N
     if "enable_interpolation" in job_input_raw and job_input_raw["enable_interpolation"] is not None:
         if not isinstance(job_input_raw["enable_interpolation"], bool):
             raise ValueError("enable_interpolation must be a boolean")
+
+    if "input_fps" in job_input_raw and job_input_raw["input_fps"] is not None:
+        if not _is_number(job_input_raw["input_fps"]):
+            raise ValueError("input_fps must be a number")
+        if job_input_raw["input_fps"] <= 0:
+            raise ValueError("input_fps must be > 0")
 
     if "subtitle_mode" in job_input_raw and job_input_raw["subtitle_mode"] is not None:
         if job_input_raw["subtitle_mode"] not in {"auto", "manual", "none"}:
@@ -1358,12 +1374,13 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             geo=job_input_raw.get('geo'),
             edit_preset=job_input_raw.get('edit_preset', 'standard_vertical'),
             music_url=job_input_raw.get('music_url'),
-            music_volume=job_input_raw.get('music_volume', 0.3),
+            music_volume=job_input_raw.get('music_volume', 0.04),
             loop_music=job_input_raw.get('loop_music', True),
             subtitle_mode=job_input_raw.get('subtitle_mode', 'auto'),
             manual_srt_url=job_input_raw.get('manual_srt_url'),
             enable_interpolation=job_input_raw.get('enable_interpolation', True),
             rife_model=job_input_raw.get('rife_model', 'rife-v4'),
+            input_fps=job_input_raw.get('input_fps', 24),
             style_overrides=job_input_raw.get('style_overrides'),
             output_filename=job_input_raw.get('output_filename'),
             output_folder=job_input_raw.get('output_folder')

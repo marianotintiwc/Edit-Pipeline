@@ -23,6 +23,15 @@
 - Style presets: `config/style.json` (serverless also generates style in `generate_style_config()`), deep-merged with `style_overrides` from API input.
 - Clips config: `config/clips.sample.json` (local) or generated in work dir (serverless).
 
+## Frame interpolation (RIFE)
+- `input_fps` is configurable via payload (default: 24). Set this to match your source video FPS for correct interpolation to 60fps.
+- Example: if source is 30fps, use `"input_fps": 30` in the payload; if source is 24fps (lipsync outputs), use `"input_fps": 24`.
+- The target FPS is always 60 (hardcoded in style generation).
+
+## Audio processing
+- Music volume default is 0.04 (configurable via `style_overrides.audio.music_volume`).
+- Peak limiter prevents music spikes above `music_peak` threshold (default: 0.06).
+
 ## External dependencies
 - FFmpeg is required (imageio-ffmpeg fallback); ImageMagick required for subtitles; RIFE Vulkan binary for interpolation; Whisper uses CUDA if available.
 - Docker/RunPod uses `Dockerfile` base `runpod/pytorch:2.4.0-py3.11-cuda12.4.1` and `startup_check.py` on boot.

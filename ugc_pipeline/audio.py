@@ -17,7 +17,7 @@ def process_audio(
         video_clip: Input video clip
         music_path: Path to music file
         style_config: Optional style configuration with audio settings
-        volume: Override volume (0.0-1.0). If None, uses style_config or default 0.06
+        volume: Override volume (0.0-1.0). If None, uses style_config or default 0.04
         
     Returns:
         Video clip with music added
@@ -36,7 +36,7 @@ def process_audio(
     
     # Determine volume (priority: explicit param > config > default)
     if volume is None:
-        volume = audio_config.get("music_volume", 0.06)
+        volume = audio_config.get("music_volume", 0.04)
     
     # Determine if we should loop
     loop_music = audio_config.get("loop_music", True)
@@ -54,6 +54,17 @@ def process_audio(
         
     # Adjust volume
     music = music.volumex(volume)
+
+    # Optional peak limiter to prevent music spikes
+    music_peak = audio_config.get("music_peak", 0.06)
+    try:
+        peak = music.max_volume()
+        if peak and peak > music_peak:
+            limiter_ratio = music_peak / peak
+            music = music.volumex(limiter_ratio)
+            print(f"Applied music peak limiter: peak={peak:.3f} -> {music_peak:.3f}")
+    except Exception as exc:
+        print(f"Warning: music peak limiter skipped: {exc}")
     
     # Mix with existing audio or set as only audio
     from moviepy.editor import CompositeAudioClip
