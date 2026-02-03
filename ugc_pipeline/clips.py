@@ -1617,11 +1617,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = max(TRANSITION_AUDIO_FADE, min(endcard_overlap, 0.3))
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
+                    if endcard_positioned.audio:
+                        endcard_positioned = endcard_positioned.fx(afx.audio_fadein, TRANSITION_AUDIO_FADE)
                 
                 final_clips.append(endcard_positioned)
                 current_time = endcard_start + endcard_clip.duration
@@ -1661,11 +1663,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = max(TRANSITION_AUDIO_FADE, min(endcard_overlap, 0.3))
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
+                    if endcard_positioned.audio:
+                        endcard_positioned = endcard_positioned.fx(afx.audio_fadein, TRANSITION_AUDIO_FADE)
                 
                 final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
                 final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)

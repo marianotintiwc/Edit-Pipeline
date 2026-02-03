@@ -68,6 +68,18 @@ def _normalize_url(url: str) -> str:
     from urllib.parse import quote
 
     url = (url or "").strip()
+    if url.startswith("https://meli-ai.filmmaker.s3.us-east-2.amazonaws.com/"):
+        url = url.replace(
+            "https://meli-ai.filmmaker.s3.us-east-2.amazonaws.com/",
+            "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/",
+            1,
+        )
+    elif url.startswith("https://meli-ai.filmmaker.s3.amazonaws.com/"):
+        url = url.replace(
+            "https://meli-ai.filmmaker.s3.amazonaws.com/",
+            "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/",
+            1,
+        )
     if url.startswith("s3://"):
         without_scheme = url[len("s3://"):]
         if "/" in without_scheme:
