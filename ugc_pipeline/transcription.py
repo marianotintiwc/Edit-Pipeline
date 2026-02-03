@@ -33,6 +33,8 @@ def fix_tap_terminology(text: str) -> str:
     text = re.sub(r"\bTAP\b", "Tap", text)
     # Replace TEP variants with Tap
     text = re.sub(r"\bTEP\b", "Tap", text, flags=re.IGNORECASE)
+    # Normalize "Mercado Pago" variations (mercadopago, mercado pago, mercado pagado/pagar, etc.)
+    text = re.sub(r"\bmercado\s*pag(?:o|ado|ar)\b", "Mercado Pago", text, flags=re.IGNORECASE)
     # Normalize "Mercado Pago" variations (mercadopago, mercado pago, etc.)
     text = re.sub(r"\bmercado\s*pago\b", "Mercado Pago", text, flags=re.IGNORECASE)
     return text
