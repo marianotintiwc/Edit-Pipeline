@@ -184,8 +184,8 @@ RIFE interpolates source frames to achieve smooth 60fps output.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `music_volume` | `0.04` | Background music volume (0.0-1.0) |
-| `music_peak` | `0.06` | Peak limiter threshold — prevents volume spikes |
+| `music_volume` | `0.03` | Background music volume (0.0-1.0) |
+| `music_peak` | `0.3` | Peak limiter threshold — prevents volume spikes |
 | `loop_music` | `true` | Loop music to match video length |
 
 The peak limiter automatically reduces music volume if it exceeds the threshold, preventing harsh spikes in the final mix.
@@ -197,8 +197,8 @@ The peak limiter automatically reduces music volume if it exceeds the threshold,
     "clips": [...],
     "style_overrides": {
       "audio": {
-        "music_volume": 0.04,
-        "music_peak": 0.06
+        "music_volume": 0.03,
+        "music_peak": 0.3
       }
     }
   }
@@ -451,7 +451,7 @@ Based on `style.json` configuration:
 | **Film Grain** | Subtle grain overlay for cinematic look |
 | **Vignette** | Edge darkening effect |
 | **Frame Interpolation** | RIFE `input_fps`→60fps upscaling (default input: 24fps, configurable via payload) |
-| **Music Peak Limiter** | Prevents music volume spikes above threshold (default: 0.06) |
+| **Music Peak Limiter** | Prevents music volume spikes above threshold (default: 0.3) |
 | **Endcard** | Auto-appended based on GEO with 1.25s overlap |
 
 ---

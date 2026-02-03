@@ -31,7 +31,7 @@ Input Schema:
         
         # === MUSIC ===
         "music_url": str | "random" | None,    # NEW: "random" picks from assets/audio
-        "music_volume": float,                 # 0.0 - 1.0 (default: 0.04)
+        "music_volume": float,                 # 0.0 - 1.0 (default: 0.3)
         "loop_music": bool,                    # Loop music to video length (default: true)
         
         # === SUBTITLES ===
@@ -196,7 +196,7 @@ class JobInput:
     # Processing options
     edit_preset: EditPreset = EditPreset.STANDARD_VERTICAL
     music_url: Optional[str] = None  # Can be URL, "random", or None
-    music_volume: float = 0.04
+    music_volume: float = 0.3
     loop_music: bool = True
     subtitle_mode: SubtitleMode = SubtitleMode.AUTO
     manual_srt_url: Optional[str] = None
@@ -1374,7 +1374,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             geo=job_input_raw.get('geo'),
             edit_preset=job_input_raw.get('edit_preset', 'standard_vertical'),
             music_url=job_input_raw.get('music_url'),
-            music_volume=job_input_raw.get('music_volume', 0.04),
+            music_volume=job_input_raw.get('music_volume', 0.3),
             loop_music=job_input_raw.get('loop_music', True),
             subtitle_mode=job_input_raw.get('subtitle_mode', 'auto'),
             manual_srt_url=job_input_raw.get('manual_srt_url'),
