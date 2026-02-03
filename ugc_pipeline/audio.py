@@ -17,7 +17,7 @@ def process_audio(
         video_clip: Input video clip
         music_path: Path to music file
         style_config: Optional style configuration with audio settings
-        volume: Override volume (0.0-1.0). If None, uses style_config or default 0.03
+        volume: Override volume (0.0-1.0). If None, uses style_config or default 0.06
         
     Returns:
         Video clip with music added
@@ -56,7 +56,7 @@ def process_audio(
     music = music.volumex(volume)
 
     # Optional peak limiter to prevent music spikes
-    music_peak = audio_config.get("music_peak", 0.3)
+    music_peak = audio_config.get("music_peak", 0.04)
     try:
         peak = music.max_volume()
         if peak and peak > music_peak:

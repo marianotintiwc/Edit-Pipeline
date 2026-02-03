@@ -41,7 +41,7 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Input FPS** | `24` | Source video FPS (lipsync outputs) |
 | **Target FPS** | `60` | RIFE interpolation output |
 | **Music Volume** | `0.03` | Background music level |
-| **Music Peak** | `0.3` | Peak limiter threshold |
+| **Music Peak** | `0.04` | Peak limiter threshold |
 | **Whisper Model** | `large` | Best accuracy |
 | **Color Grading** | `disabled` | Raw look |
 
@@ -284,7 +284,7 @@ python run_meli_edit.py --jobs jobs.json --workers 3
 | `subtitle_mode` | `auto` \| `manual` \| `none` | Modo de subtítulos |
 | `input_fps` | `float` (default: `24`) | FPS del video fuente para interpolación RIFE. Usar `24` para lipsync, `30` para cámara raw |
 | `style_overrides.audio.music_volume` | `float` (default: `0.03`) | Volumen de música de fondo |
-| `style_overrides.audio.music_peak` | `float` (default: `0.3`) | Límite de picos de volumen de música |
+| `style_overrides.audio.music_peak` | `float` (default: `0.04`) | Límite de picos de volumen de música |
 | `style_overrides.transcription.model` | `tiny`, `base`, `small`, `medium`, `large` | Modelo Whisper |
 
 ### 📍 Orden de Clips

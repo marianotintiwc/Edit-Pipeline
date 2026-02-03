@@ -30,7 +30,7 @@
 
 ## Audio processing
 - Music volume default is 0.03 (configurable via `style_overrides.audio.music_volume`).
-- Peak limiter prevents music spikes above `music_peak` threshold (default: 0.3).
+- Peak limiter prevents music spikes above `music_peak` threshold (default: 0.04).
 
 ## External dependencies
 - FFmpeg is required (imageio-ffmpeg fallback); ImageMagick required for subtitles; RIFE Vulkan binary for interpolation; Whisper uses CUDA if available.
