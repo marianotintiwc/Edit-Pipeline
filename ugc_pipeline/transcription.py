@@ -22,6 +22,20 @@ def format_timestamp(seconds: float) -> str:
 
 import numpy as np
 
+def normalize_mercado_pago(text: str) -> str:
+    """Normalize any Mercado Pago variants to 'Mercado Pago'."""
+    if not text:
+        return text
+    text = re.sub(r"\bmercadopago\b", "Mercado Pago", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\bmercado\s*pag[a-záéíóúñ]*\b",
+        "Mercado Pago",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
 def fix_tap_terminology(text: str) -> str:
     """Normalize TAP terminology for Mercado Pago Tap jobs."""
     if not text:
@@ -35,10 +49,8 @@ def fix_tap_terminology(text: str) -> str:
     text = re.sub(r"\bTEP\b", "Tap", text, flags=re.IGNORECASE)
     # Normalize Cuenta Pro variations (cuentapro, cuenta pro)
     text = re.sub(r"\bcuenta\s*pro\b", "Cuenta Pro", text, flags=re.IGNORECASE)
-    # Normalize "Mercado Pago" variations (mercadopago, mercado pago, mercado pagado/pagar, etc.)
-    text = re.sub(r"\bmercado\s*pag(?:o|ado|ar)\b", "Mercado Pago", text, flags=re.IGNORECASE)
-    # Normalize "Mercado Pago" variations (mercadopago, mercado pago, etc.)
-    text = re.sub(r"\bmercado\s*pago\b", "Mercado Pago", text, flags=re.IGNORECASE)
+    # Always normalize Mercado Pago variants
+    text = normalize_mercado_pago(text)
     return text
 
 
@@ -201,6 +213,7 @@ def transcribe_audio_array(
             start = format_timestamp(segment["start"])
             end = format_timestamp(segment["end"])
             text = segment["text"].strip()
+            text = normalize_mercado_pago(text)
             if is_tap_job:
                 text = fix_tap_terminology(text)
             

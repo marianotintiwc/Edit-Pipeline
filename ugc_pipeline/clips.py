@@ -14,6 +14,25 @@ from typing import List, Dict, Any
 TARGET_RESOLUTION = (1080, 1920)
 TARGET_FPS = 30  # Default, can be overridden by frame_interpolation config
 TRANSITION_AUDIO_FADE = 0.05  # seconds
+ENDCARD_AUDIO_FADE_MAX = 0.5  # seconds
+ENDCARD_AUDIO_FADE_DEFAULT = 0.1  # seconds
+
+
+def get_endcard_audio_fade_seconds(style_config: Dict[str, Any], endcard_overlap: float) -> float:
+    """Resolve endcard audio fade duration (per-job override supported)."""
+    if not style_config or endcard_overlap <= 0:
+        return 0.0
+    endcard_cfg = style_config.get("endcard", {}) or {}
+    audio_cfg = style_config.get("audio", {}) or {}
+    override = endcard_cfg.get("audio_fade_seconds")
+    if override is None:
+        override = audio_cfg.get("endcard_fade_seconds")
+    if override is None:
+        return min(endcard_overlap, ENDCARD_AUDIO_FADE_DEFAULT)
+    try:
+        return max(0.0, min(float(override), endcard_overlap))
+    except (TypeError, ValueError):
+        return min(endcard_overlap, ENDCARD_AUDIO_FADE_MAX)
 
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -1677,25 +1696,23 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 endcard_start = current_time - endcard_overlap
                 print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
                 
-                # Apply audio fadeout to the last clip and end audio at endcard_start
+                # Apply audio fadeout to the last clip (let it overlap under endcard)
                 if final_clips and endcard_overlap > 0:
                     last_clip = final_clips[-1]
                     if last_clip.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.15)
-                        audio_end = max(0.0, last_clip.duration - endcard_overlap)
-                        trimmed_audio = last_clip.audio.subclip(0, audio_end)
-                        trimmed_audio = trimmed_audio.fx(afx.audio_fadeout, audio_fade_duration)
-                        last_clip = last_clip.set_audio(trimmed_audio)
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
+                        faded_audio = last_clip.audio.fx(afx.audio_fadeout, audio_fade_duration)
+                        last_clip = last_clip.set_audio(faded_audio)
                         final_clips[-1] = last_clip
                         print(
-                            f"     Applied {audio_fade_duration:.2f}s audio fadeout to last clip (end at endcard_start)"
+                            f"     Applied {audio_fade_duration:.2f}s audio fadeout to last clip (overlaps under endcard)"
                         )
                 
                 # Apply fade-in effect during overlap period (video + audio)
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
@@ -1724,22 +1741,20 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 endcard_start = total_dur - endcard_overlap
                 print(f"     Adding endcard at t={endcard_start:.2f}s with fade-in transparency")
                 
-                # Apply audio fadeout to main clip and end audio at endcard_start
+                # Apply audio fadeout to main clip (let it overlap under endcard)
                 if endcard_overlap > 0 and final_clip.audio:
-                    audio_fade_duration = min(endcard_overlap, 0.15)
-                    audio_end = max(0.0, endcard_start)
-                    trimmed_audio = final_clip.audio.subclip(0, audio_end)
-                    trimmed_audio = trimmed_audio.fx(afx.audio_fadeout, audio_fade_duration)
-                    final_clip = final_clip.set_audio(trimmed_audio)
+                    audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
+                    faded_audio = final_clip.audio.fx(afx.audio_fadeout, audio_fade_duration)
+                    final_clip = final_clip.set_audio(faded_audio)
                     print(
-                        f"     Applied {audio_fade_duration:.2f}s audio fadeout to main clip (end at endcard_start)"
+                        f"     Applied {audio_fade_duration:.2f}s audio fadeout to main clip (overlaps under endcard)"
                     )
                 
                 # Apply fade-in effect during overlap period (video + audio)
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
@@ -2186,7 +2201,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                 if final_clips and endcard_overlap > 0:
                     last_clip = final_clips[-1]
                     if last_clip.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)  # Max 0.3s audio fade
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                         last_clip = last_clip.fx(afx.audio_fadeout, audio_fade_duration)
                         final_clips[-1] = last_clip
                         print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to last clip")
@@ -2196,7 +2211,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     # Also fade in endcard audio to prevent pop
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
@@ -2222,7 +2237,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                 
                 # Apply audio fadeout to main clip (scene 3) to prevent audio pop
                 if endcard_overlap > 0 and final_clip.audio:
-                    audio_fade_duration = min(endcard_overlap, 0.3)  # Max 0.3s audio fade
+                    audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                     final_clip = final_clip.fx(afx.audio_fadeout, audio_fade_duration)
                     print(f"     Applied {audio_fade_duration:.2f}s audio fadeout to main clip")
                 
@@ -2240,7 +2255,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     endcard_with_fade = endcard_clip.fl(fade_in_concat)
                     # Also fade in endcard audio to prevent pop
                     if endcard_with_fade.audio:
-                        audio_fade_duration = min(endcard_overlap, 0.3)
+                        audio_fade_duration = get_endcard_audio_fade_seconds(style_config, endcard_overlap)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
