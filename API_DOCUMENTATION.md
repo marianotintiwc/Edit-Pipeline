@@ -232,7 +232,13 @@ The peak limiter automatically reduces music volume if it exceeds the threshold,
         "alpha_fill": {
           "enabled": true,
           "blur_sigma": 60,
-          "slow_factor": 1.6
+          "slow_factor": 1.6,
+          "alpha_levels": {
+            "enabled": true,
+            "black": 0.05,
+            "white": 1.0,
+            "gamma": 1.0
+          }
         }
       },
       {"type": "scene", "url": "https://.../scene3.mp4"},
@@ -350,6 +356,12 @@ Payload listo para copiar que ilustra todas las opciones de customización per-c
 | `chroma_key_similarity` | float | `0.08` | Tolerancia del chroma key |
 | `chroma_key_blend` | float | `0.0` | Blend del chroma key |
 | `edge_feather` | int | `0` | Suavizado de bordes |
+| `alpha_levels.enabled` | bool | `false` | Activa niveles sobre la máscara alpha |
+| `alpha_levels.black` | float | `0.0` | Umbral de negros (aplastar ruido) |
+| `alpha_levels.white` | float | `1.0` | Umbral de blancos |
+| `alpha_levels.gamma` | float | `1.0` | Gamma de la máscara |
+| `alpha_levels.clamp_min` | float | `0.0` | Clamp mínimo posterior |
+| `alpha_levels.clamp_max` | float | `1.0` | Clamp máximo posterior |
 
 ### Campos alpha_detection Soportados
 

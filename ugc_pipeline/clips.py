@@ -368,6 +368,34 @@ def _log_mask_stats(mask_clip: VideoFileClip | None, label: str, indent: int = 0
         print_clip_status(f"{label}: failed to read mask stats ({e})", indent)
 
 
+def _apply_alpha_levels(
+    mask_clip: VideoFileClip,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
+    gamma: float = 1.0,
+    clamp_min: float = 0.0,
+    clamp_max: float = 1.0
+) -> VideoFileClip:
+    """Apply levels/gamma to a mask clip to crush noisy blacks and normalize alpha."""
+    if mask_clip is None:
+        return mask_clip
+    if white_point <= black_point:
+        return mask_clip
+
+    denom = max(white_point - black_point, 1e-6)
+
+    def _levels(frame):
+        mask = frame if frame.ndim == 2 else frame[:, :, 0]
+        mask = (mask - black_point) / denom
+        mask = np.clip(mask, 0.0, 1.0)
+        if gamma and gamma != 1.0:
+            mask = np.power(mask, gamma)
+        mask = np.clip(mask, clamp_min, clamp_max)
+        return mask
+
+    return mask_clip.fl_image(_levels)
+
+
 def _pix_fmt_has_alpha(pix_fmt: str | None) -> bool:
     if not pix_fmt:
         return False
@@ -1003,6 +1031,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             image_alpha_invert = alpha_fill_config.get("invert_alpha", None)
             image_alpha_auto_invert = alpha_fill_config.get("auto_invert_alpha", True)
             image_alpha_auto_threshold = alpha_fill_config.get("auto_invert_alpha_threshold", 0.3)
+            alpha_levels_cfg = alpha_fill_config.get("alpha_levels", {}) or {}
+            alpha_levels_enabled = bool(alpha_levels_cfg.get("enabled", False))
+            alpha_levels_black = float(alpha_levels_cfg.get("black", 0.0))
+            alpha_levels_white = float(alpha_levels_cfg.get("white", 1.0))
+            alpha_levels_gamma = float(alpha_levels_cfg.get("gamma", 1.0))
+            alpha_levels_clamp_min = float(alpha_levels_cfg.get("clamp_min", 0.0))
+            alpha_levels_clamp_max = float(alpha_levels_cfg.get("clamp_max", 1.0))
 
             original_audio = None
             broll_has_alpha = False
@@ -1087,6 +1122,25 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             else:
                 clip = VideoFileClip(path)
                 original_audio = clip.audio
+
+            if is_broll and alpha_fill_enabled and alpha_levels_enabled and clip.mask is not None:
+                if alpha_levels_white > alpha_levels_black:
+                    clip = clip.set_mask(
+                        _apply_alpha_levels(
+                            clip.mask,
+                            black_point=alpha_levels_black,
+                            white_point=alpha_levels_white,
+                            gamma=alpha_levels_gamma,
+                            clamp_min=alpha_levels_clamp_min,
+                            clamp_max=alpha_levels_clamp_max
+                        )
+                    )
+                    print_clip_status(
+                        f"Alpha levels applied: clip={os.path.basename(path)} black={alpha_levels_black}, white={alpha_levels_white}, gamma={alpha_levels_gamma}",
+                        3
+                    )
+                else:
+                    print_clip_status("Alpha levels skipped (white <= black)", 3)
 
             # DEBUG: Export b-roll with alpha for inspection
             if alpha_verbose and is_broll and (broll_has_alpha or alpha_force_key):
@@ -1617,13 +1671,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = max(TRANSITION_AUDIO_FADE, min(endcard_overlap, 0.3))
+                        audio_fade_duration = min(endcard_overlap, 0.3)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
-                    if endcard_positioned.audio:
-                        endcard_positioned = endcard_positioned.fx(afx.audio_fadein, TRANSITION_AUDIO_FADE)
                 
                 final_clips.append(endcard_positioned)
                 current_time = endcard_start + endcard_clip.duration
@@ -1663,13 +1715,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 if endcard_overlap > 0:
                     endcard_with_fade = endcard_clip.fx(vfx.fadein, endcard_overlap)
                     if endcard_with_fade.audio:
-                        audio_fade_duration = max(TRANSITION_AUDIO_FADE, min(endcard_overlap, 0.3))
+                        audio_fade_duration = min(endcard_overlap, 0.3)
                         endcard_with_fade = endcard_with_fade.fx(afx.audio_fadein, audio_fade_duration)
                     endcard_positioned = endcard_with_fade.set_start(endcard_start)
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
-                    if endcard_positioned.audio:
-                        endcard_positioned = endcard_positioned.fx(afx.audio_fadein, TRANSITION_AUDIO_FADE)
                 
                 final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
                 final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)

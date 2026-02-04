@@ -266,6 +266,28 @@ result = client.submit_job_sync(payload)
 print(result["output"]["output_url"])
 ```
 
+#### Caso puntual: 226_pix_no_credito-MLB-male_MELI_EDIT.mp4
+
+Para este b-roll (alpha con ruido en negros), usar `alpha_levels` para aplastar el fondo antes del blur:
+
+```json
+{
+  "type": "broll",
+  "url": ".../226_pix_no_credito-MLB-male_MELI_EDIT.mp4",
+  "alpha_fill": {
+    "enabled": true,
+    "force_chroma_key": true,
+    "chroma_key_color": "0x000000",
+    "alpha_levels": {
+      "enabled": true,
+      "black": 0.05,
+      "white": 1.0,
+      "gamma": 1.0
+    }
+  }
+}
+```
+
 ### Prioridad de Configuración
 
 1. `clips[].alpha_fill` / `clips[].overlap_seconds` (per-clip) — **mayor prioridad**

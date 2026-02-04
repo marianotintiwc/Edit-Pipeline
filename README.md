@@ -422,7 +422,13 @@ payload = {
                     "blur_sigma": 60,
                     "slow_factor": 1.5,
                     "force_chroma_key": True,
-                    "chroma_key_color": "0x1F1F1F"
+                  "chroma_key_color": "0x1F1F1F",
+                  "alpha_levels": {
+                    "enabled": True,
+                    "black": 0.05,
+                    "white": 1.0,
+                    "gamma": 1.0
+                  }
                 }
             },
             {"type": "scene", "url": "https://.../scene_3_lipsync.mp4", "end_time": -0.1},
@@ -460,6 +466,11 @@ for w in warnings:
 result = client.submit_job_sync(payload)
 print(f"✅ Video: {result['output']['output_url']}")
 ```
+
+### Alpha Levels (opcional)
+
+Si el alpha del b-roll tiene ruido en negros (manchas/chorreado en el blur), podés “aplastar” esos negros con `alpha_levels` dentro de `alpha_fill`.
+Esto normaliza la máscara antes de componer el fondo blur.
 
 ### Alpha Detection (ffprobe + verbose)
 
