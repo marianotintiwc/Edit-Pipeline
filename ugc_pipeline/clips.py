@@ -1123,6 +1123,30 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 clip = VideoFileClip(path)
                 original_audio = clip.audio
 
+            if is_broll and alpha_fill_enabled:
+                if clip.mask is None:
+                    print_clip_status("B-roll alpha: mask missing (invert/auto-invert skipped)", 3)
+                else:
+                    if image_alpha_invert is True:
+                        clip = clip.set_mask(_invert_mask(clip.mask))
+                        print_clip_status("B-roll alpha: invert_alpha=true → mask inverted", 3)
+                    elif image_alpha_invert is False:
+                        print_clip_status("B-roll alpha: invert_alpha=false → mask kept", 3)
+                    elif image_alpha_auto_invert:
+                        if _should_invert_mask(clip.mask, threshold=image_alpha_auto_threshold):
+                            clip = clip.set_mask(_invert_mask(clip.mask))
+                            print_clip_status(
+                                f"B-roll alpha: auto_invert_alpha=true (threshold={image_alpha_auto_threshold}) → mask inverted",
+                                3
+                            )
+                        else:
+                            print_clip_status(
+                                f"B-roll alpha: auto_invert_alpha=true (threshold={image_alpha_auto_threshold}) → no inversion",
+                                3
+                            )
+                    else:
+                        print_clip_status("B-roll alpha: auto_invert_alpha=false → no inversion", 3)
+
             if is_broll and alpha_fill_enabled and alpha_levels_enabled and clip.mask is not None:
                 if alpha_levels_white > alpha_levels_black:
                     clip = clip.set_mask(
