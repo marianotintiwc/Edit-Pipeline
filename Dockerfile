@@ -174,10 +174,10 @@ RUN if [ -f "/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF" ]; then \
     fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pre-download Whisper Model (speeds up first job)
+# Pre-download Whisper Model (skipped by default; set SKIP_WHISPER_DOWNLOAD=0 to pre-download)
 # ─────────────────────────────────────────────────────────────────────────────
 # Pre-download "large" model to match style.json transcription config (~2.9GB)
-ARG SKIP_WHISPER_DOWNLOAD=0
+ARG SKIP_WHISPER_DOWNLOAD=1
 RUN if [ "$SKIP_WHISPER_DOWNLOAD" = "1" ]; then \
         echo "Skipping Whisper model download"; \
     else \
