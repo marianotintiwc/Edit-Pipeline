@@ -21,9 +21,11 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$BASE_CACHE/cache}"
 
 mkdir -p "$WHISPER_CACHE_DIR" "$XDG_CACHE_HOME"
 
-if [ ! -f "$WHISPER_CACHE_DIR/large.pt" ]; then
+if [ "${SKIP_WHISPER_PRELOAD:-0}" != "1" ] && [ ! -f "$WHISPER_CACHE_DIR/large.pt" ]; then
     echo "Whisper model not found in $WHISPER_CACHE_DIR. Downloading..."
     python -c "import whisper; whisper.load_model('large', download_root='$WHISPER_CACHE_DIR')"
+elif [ "${SKIP_WHISPER_PRELOAD:-0}" = "1" ]; then
+    echo "Whisper preload skipped (will download on first job if needed)"
 else
     echo "Whisper model found in $WHISPER_CACHE_DIR. Skipping download."
 fi

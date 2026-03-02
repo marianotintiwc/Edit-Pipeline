@@ -38,6 +38,7 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Stroke Width** | `10` | Thick for visibility |
 | **Highlight Color** | `#333333` | Karaoke highlight |
 | **Endcard Overlap** | `0.5s` | Smooth transition |
+| **Endcard Audio Fade** | `0.1s` | Applies only when overlap > 0 |
 | **Input FPS** | `24` | Source video FPS (lipsync outputs) |
 | **Target FPS** | `60` | RIFE interpolation output |
 | **Music Volume** | `0.03` | Background music level |
@@ -45,9 +46,22 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Whisper Model** | `large` | Best accuracy |
 | **Color Grading** | `disabled` | Raw look |
 
+### S3 Assets (Presigned + Normalization)
+
+- For **private S3 assets**, always send **presigned URLs** (RunPod cannot use your local AWS profile).
+- **Do not pre-encode** S3 keys before presigning. Double-encoding can cause 404s.
+- For MP-Users assets, treat `+` as space and normalize filenames to **NFD** (macOS-style).
+- If you see 404s, verify the exact key in S3 and update the CSV to the real filename.
+
 #### Endcard Alpha Handling
 
 Endcards preserve transparency by default. To fill transparent areas, enable `endcard_alpha_fill` and set `use_blur_background` to `true` (blurred background from the previous clip). Leave `use_blur_background` as `false` to keep transparency.
+
+#### Endcard Audio Overlap + Fade (Scene 3)
+
+- The last **0.5s** of Scene 3 overlaps with the first **0.5s** of the endcard when `endcard.overlap_seconds = 0.5`.
+- The Scene 3 audio fades out during that overlap using `endcard.audio_fade_seconds` (default: `0.1s`).
+- This fade only applies when overlap is greater than 0.
 
 #### Introcard Alpha Handling (Findings)
 
@@ -68,6 +82,32 @@ Recommended config for MELI classic:
 ```
 
 This keeps the original compositing intent from design: solid yellow frame + transparent center window over the talent video.
+
+#### B-roll Alpha Channel Fix (TAP/MLB Issue - Feb 2026)
+
+**Problem:** TAP b-roll assets (e.g., `MP_SELLERS_AI_VIDEO_GENERICO_TAP_MLB_9X16.mov`) appeared with inverted alpha channels in the final output. The transparent phone screen area showed as opaque, and the opaque hand/phone showed as transparent.
+
+**Root Cause:** The pipeline's `auto_invert_alpha` feature was incorrectly detecting the b-roll alpha channel as needing inversion. This happens when `broll_alpha_fill.enabled` is true but `auto_invert_alpha` is not explicitly disabled.
+
+**Solution:** Explicitly configure `broll_alpha_fill` with `auto_invert_alpha: false` to preserve the original alpha channel:
+
+```json
+"broll_alpha_fill": {
+  "enabled": true,
+  "invert_alpha": false,
+  "auto_invert_alpha": false
+}
+```
+
+**When to Apply:** Use this configuration when:
+- B-roll assets have pre-rendered alpha channels (ProRes 4444, QuickTime Animation, etc.)
+- TAP product videos where the phone screen should be transparent
+- Any b-roll where the alpha channel appears inverted in output
+
+**Debug Process:**
+1. Submit a DEBUG job with explicit `broll_alpha_fill` settings
+2. Compare output with/without `auto_invert_alpha: false`
+3. If alpha is correct with the fix, update your submission script to include this config
 
 ### Complete Payload Example
 
@@ -100,6 +140,7 @@ This keeps the original compositing intent from design: solid yellow frame + tra
       "endcard": {
         "enabled": true,
         "overlap_seconds": 0.5,
+        "audio_fade_seconds": 0.1,
         "url": "https://drive.google.com/uc?export=download&id=..."
       },
       "endcard_alpha_fill": {
@@ -109,6 +150,11 @@ This keeps the original compositing intent from design: solid yellow frame + tra
       "introcard_alpha_fill": {
         "enabled": true,
         "use_blur_background": false,
+        "invert_alpha": false,
+        "auto_invert_alpha": false
+      },
+      "broll_alpha_fill": {
+        "enabled": true,
         "invert_alpha": false,
         "auto_invert_alpha": false
       },
@@ -157,6 +203,8 @@ This keeps the original compositing intent from design: solid yellow frame + tra
 ```
 
 ### Con Recorte (cortar 0.1s antes del final)
+
+⚠️ **Nota:** `end_time: -1` recorta **1 segundo completo** del final del clip. Usá `-0.1` si solo querés cortar 0.1s.
 
 ```json
 {
@@ -559,6 +607,8 @@ Podés activar esto con `style_overrides` cuando envías el payload.
   - Docker image: `docker.io/marianotintiwc/edit-pipeline:latest`
    - Set environment variables (see below)
    - Deploy!
+
+**Cold start with auto subtitles:** The image skips Whisper model preload at startup (`SKIP_WHISPER_PRELOAD=1`) for faster worker readiness. The first job with `subtitle_mode=auto` will download the Whisper large model (~2.9GB) on demand, so that job may take several minutes longer. Set `SKIP_WHISPER_PRELOAD=0` in the endpoint env to preload at startup (slower cold start, faster first subtitle job).
 
 ### RunPod Helper CLI (Consolidated)
 
@@ -1576,6 +1626,140 @@ def save_progress(stats: dict):
 
 A single command-line tool for all common pipeline operations.
 
+Newer workflows now live in `python -m ugc_tools` (CSV prep, RunPod monitoring/retry,
+and asset/S3 helpers). See `TOOLING.md` for the consolidated CLI usage and
+legacy script mapping.
+
+### 🧰 Utilities & Helper Scripts (Catalog)
+
+There are **two layers** of utilities in this repo:
+
+- **Recommended (reusable, configurable)**: `python -m ugc_tools ...`
+- **Legacy/one-off scripts**: files in `Helper Scripts/` (many now act as wrappers that call `ugc_tools`)
+
+If you’re trying to do a “common ops task” (prepare CSVs, upload assets to S3, monitor jobs, retry failed jobs),
+start with `ugc_tools` and only fall back to `Helper Scripts/` if you need a very specific edge case.
+
+#### `ugc_tools` (recommended entrypoint)
+
+Entry point:
+
+```bash
+python -m ugc_tools --help
+python -m ugc_tools <area> --help
+```
+
+Current areas/commands (see `TOOLING.md` for examples):
+
+| Area | Commands | Purpose |
+| --- | --- | --- |
+| `csv` | `complete-folders`, `autofill-assets` | Generate/edit config CSVs; autofill assets via `config/ugc_assets_map.json` |
+| `runpod` | `monitor`, `retry-from-log` | Poll job status from logs; generate retry CSVs (optionally resubmit) |
+| `assets` | `upload-drive`, `replace-urls` | Download Drive assets, upload to S3, then rewrite CSV URLs using the report |
+| `s3` | `rename`, `upload-folder` | Safe renames via plan/apply; bulk upload local folders to S3 |
+
+Related configuration files:
+- `config/ugc_assets_map.json` (SMART/TAP → GEO → {endcard,broll})
+- `config/rename_map_mlm_endcards.json` (example rename map used by `ugc_tools s3 rename`)
+
+#### Helper Scripts (legacy entrypoint, mostly wrappers)
+
+`Helper Scripts/` contains many scripts created during past debugging/production runs.
+To keep this maintainable, the canonical documentation is:
+- `TOOLING.md` (how to run the tools)
+- `TOOLING_INVENTORY.md` (script-by-script purpose + migration map)
+
+Below is the **complete list** of python helper scripts currently in `Helper Scripts/`:
+
+```text
+add_broll_endcard_s3_to_belu.py
+build_lipsync_routes_csv.py
+build_scenes_from_lipsync_3000plus.py
+check_belu_status.py
+check_belu_status_sample.py
+check_belus_basta_status.py
+check_missing_job_status.py
+check_missing_lipsync_in_s3.py
+check_mlb_failed_errors.py
+check_mlm_status.py
+check_presigned_url.py
+check_recent_s3.py
+check_retry_errors.py
+check_runpod_status_variants.py
+check_s3_head.py
+check_scene_broll_endcard_matches.py
+check_sellers_status.py
+check_users_outputs.py
+check_users_s3_missing.py
+debug_s3.py
+download_mlb_assets_and_create_csv.py
+download_mlm_assets_and_create_csv.py
+extract_and_retry_failed.py
+find_failed_latest.py
+find_missing_lipsync_folders.py
+find_mlb_asset_matches.py
+find_mlb_asset_mismatches.py
+find_outputs_scene_matches.py
+fix_csv_urls.py
+fix_users_scene_urls.py
+generate_meli_video_asset_map.py
+generate_users_url_report.py
+list_s3_common_prefixes.py
+list_s3_prefix.py
+map_lipsync_urls_3000plus.py
+meli_assets_mapper.py
+monitor_mlb_jobs.py
+monitor_sellers_scenes_jobs.py
+monitor_users_jobs.py
+poll_job.py
+presign_users_csv.py
+rename_mlb_endcards_s3_fix.py
+rename_mlm_endcards_s3.py
+replace_users_assets_with_s3.py
+resubmit_missing_users_jobs.py
+resubmit_mlb_failed.py
+retry_failed_broll_tests.py
+retry_failed_from_log.py
+retry_failed_users_jobs.py
+run_belu_batch_safe.py
+run_docker_test.py
+run_meli_edit.py
+run_meli_from_belus_basta_csv.py
+run_meli_from_cofrinhos_correction_csv.py
+run_meli_from_csv.py
+run_meli_from_csv_tap.py
+run_meli_from_mla_mlc_mlm_csv.py
+run_meli_from_mlb_csv.py
+run_meli_from_mlc_csv.py
+run_meli_from_mlm_csv.py
+run_meli_from_mlm_csv_v2.py
+run_meli_from_structured_csv.py
+run_meli_from_users_csv.py
+run_meli_from_ultimos_v3456789_csv.py
+run_mlb_batch_with_poll.py
+run_sellers_batch_over_1000.py
+run_sellers_batch_parallel.py
+run_sellers_from_scenes_csv.py
+runpod_cli.py
+runpod_poll.py
+runpod_status.py
+runpod_submit_and_poll.py
+submit_broll_tests.py
+submit_debug_job.py
+submit_mlc_mla_mlm_alpha_fix.py
+submit_mlm_jobs.py
+submit_pix_no_credito_only.py
+summarize_latest_errors.py
+summarize_latest_errors_safe.py
+update_csv_endcards.py
+update_mlb_endcards_real.py
+update_mlm_csv_urls.py
+update_runpod_endpoint_image.py
+upload_brolls_to_s3.py
+upload_mlm_brolls.py
+upload_users_assets_to_s3.py
+```
+
 ### Quick Reference
 
 ```bash
@@ -1769,3 +1953,54 @@ python3 "Helper Scripts/run_meli_from_structured_csv.py"
 - Submits to RunPod endpoint `h55ft9cy7fyi1d`
 - Rate limiting: 0.5s delay every 10 jobs
 - Output folder: `MELI_Exports/2026-02/{parent}_MELI_EDIT.mp4`
+
+Based on the error logs and details you provided, the 403 Forbidden errors are almost certainly caused by the double URL-encoding in the object paths (e.g., %2520 instead of %20 for spaces). This is a common issue when URLs are generated or stored incorrectly, leading AWS S3 to interpret the path as a literal key that doesn't exist, resulting in a denial (shown as 403 for unauthenticated requests to prevent existence disclosure). Your permissions and policies look solid, so this isn't a pure access control problem—it's about the request not matching the actual stored object keys.
+Why Double-Encoding Breaks It
+
+S3 object keys can include spaces (e.g., "MLB - Venda com Tap do Mercado Pago.mov").
+In HTTP URLs, spaces must be encoded as %20 (single encoding).
+%2520 means the % character itself was encoded ( %25 is the code for %, plus 20), so S3 looks for a key literally containing %20 in the name (e.g., "MLB%20-%20Venda%20com%20Tap%20do%20Mercado%20Pago.mov"), which probably doesn't match what's actually stored.
+For public/unauthenticated requests:
+If the key exists and is public: 200 OK.
+If the key doesn't exist or access is denied: S3 returns 403 (not 404) to avoid leaking info about object existence.
+
+User reports on forums (e.g., Stack Overflow, AWS re:Post) confirm this exact pattern: double-encoding from app logic (like repeated urlencode calls in Python's urllib) causes "phantom" 403s on otherwise public objects.
+The summary you shared ("URLs are double-encoded (%2520), which breaks S3 access") nails it. If these URLs are coming from a database, API, or script (e.g., in RunPod), that's where the encoding error originated.
+
+Quick Test to Confirm
+
+In the AWS S3 console, navigate to your bucket (meli-ai.filmmaker) > Find one of the failing objects (e.g., under MP-Sellers/Assets/).
+Copy the exact object key (it should show with spaces, not %20).
+Generate the correct URL: https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/<path-with-%20-for-spaces>.
+Example fix for your first error: Replace %2520 with %20 everywhere, so https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MLB%20-%20Venda%20com%20Tap%20do%20Mercado%20Pago.mov.
+
+Paste the fixed URL into a browser (incognito mode, no AWS login) and see if it downloads. If yes, encoding was the issue.
+If it still 403s, check the exact key in console—maybe the files were uploaded with literal %20 in the name (unlikely, but possible; rename them if so).
+
+How to Fix in Your Setup
+Since this is happening in RunPod (likely a script or pod fetching these assets), focus on correcting the URLs at the source or during fetch:
+
+Fix URL Generation/Storage:
+Wherever these URLs are created (e.g., in your app code or database), ensure single encoding.
+In Python (common for RunPod): Use urllib.parse.quote() once on the path, but not on an already-encoded string.
+Bad: quote(quote("MLB - Venda...")) → produces %2520.
+Good: quote("MLB - Venda com Tap do Mercado Pago.mov") → %20.
+
+If URLs are stored encoded, decode them first with urllib.parse.unquote() before using.
+
+Handle in Download Script (e.g., RunPod):
+Modify the fetch code to decode double-encoding before requesting.
+Example in Python (using requests):Pythonimport requests
+from urllib.parse import unquote
+
+bad_url = "https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/MP-Sellers/Assets/MLB%2520-%2520Venda%2520com%2520Tap%2520do%2520Mercado%2520Pago.mov"
+fixed_path = unquote(unquote(bad_url.split('.com/')[1]))  # Double unquote to fix %2520 -> space
+fixed_url = f"https://s3.us-east-2.amazonaws.com/meli-ai.filmmaker/{fixed_path}"
+
+response = requests.get(fixed_url)
+if response.status_code == 200:
+    with open("file.mov", "wb") as f:
+        f.write(response.content)
+else:
+    print(f"Failed: {response.status_code} - {response.text}")
+This turns %2520 back to %20 in the URL. Test it on one file.
