@@ -610,6 +610,16 @@ Podés activar esto con `style_overrides` cuando envías el payload.
 
 **Cold start with auto subtitles:** The image skips Whisper model preload at startup (`SKIP_WHISPER_PRELOAD=1`) for faster worker readiness. The first job with `subtitle_mode=auto` will download the Whisper large model (~2.9GB) on demand, so that job may take several minutes longer. Set `SKIP_WHISPER_PRELOAD=0` in the endpoint env to preload at startup (slower cold start, faster first subtitle job).
 
+#### Deploy from Docker Hub (recommended when GitHub build hangs)
+
+If deploying from **GitHub** gets stuck at "pulling image moby/buildkit:v0.17.2" (RunPod's build infrastructure), use the **Docker Hub flow** instead—it bypasses RunPod's buildkit entirely:
+
+1. Build locally: `docker build --platform linux/amd64 -t docker.io/marianotintiwc/edit-pipeline:latest .`
+2. Push: `docker push docker.io/marianotintiwc/edit-pipeline:latest`
+3. In RunPod Console → Serverless → your endpoint → **Container Image** → Import from Docker Registry → `docker.io/marianotintiwc/edit-pipeline:latest`
+
+Use `--platform linux/amd64` if building on Apple Silicon. If the GitHub build still hangs after retries, disable EU regions in the endpoint (known to cause image pull issues).
+
 ### RunPod Helper CLI (Consolidated)
 
 All RunPod helper scripts were consolidated into a single CLI:
