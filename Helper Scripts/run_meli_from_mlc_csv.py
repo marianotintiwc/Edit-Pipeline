@@ -13,6 +13,8 @@ import requests
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
+sys.path.insert(0, REPO_DIR)
+from geo_mapping import normalize_geo
 CSV_PATH = os.path.join(os.path.dirname(REPO_DIR), "USER for Edit - MLC_Approved.csv")
 CASES_PATH = os.path.join(REPO_DIR, "presets", "meli_cases.json")
 LOG_PATH = os.path.join(REPO_DIR, "users_mlc_meli_from_csv.log")
@@ -96,7 +98,7 @@ def build_payload(
     default_introcard_url: str,
     output_folder: str,
 ) -> Dict[str, Any]:
-    geo = (row.get("GEO") or "").strip()
+    geo = normalize_geo((row.get("GEO") or "").strip())
     scene1 = (row.get("scene_1_lipsync") or "").strip()
     scene2 = (row.get("scene_2_lipsync") or "").strip()
     scene3 = (row.get("scene_3_lipsync") or "").strip()

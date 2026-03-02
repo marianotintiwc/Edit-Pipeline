@@ -27,7 +27,7 @@ Input Schema:
         ],
         
         # === GEO & LANGUAGE ===
-        "geo": str,                            # NEW: "MLA" | "MLB" | "MLC" | "MLM" (MLB=Portuguese, others=Spanish)
+        "geo": str,                            # MercadoLibre geo (MLA, MLB, MLC, MLM) or country code (AR, BR, CL, MX). Maps: CL->MLC, AR->MLA, etc.
         
         # === MUSIC ===
         "music_url": str | "random" | None,    # NEW: "random" picks from assets/audio
@@ -43,7 +43,10 @@ Input Schema:
         "enable_interpolation": bool,          # Enable RIFE (default: true)
         "rife_model": str,                     # "rife-v4" | "rife-v4.6" (default: "rife-v4")
         "input_fps": float | int,              # Source FPS for interpolation (default: 24)
-        "style_overrides": dict | None         # Partial style.json overrides
+        "style_overrides": dict | None,        # Partial style.json overrides
+        "output_filename": str | None,         # Custom output filename
+        "output_folder": str | None,           # S3 key prefix (e.g. "LATAM/LATAM_Exports")
+        "output_bucket": str | None             # Override S3 bucket (default: S3_BUCKET env)
     }
     
     Example (new format with scenes + b-roll):
@@ -102,6 +105,7 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from startup_check import validate_environment, RIFENotAvailableError, VulkanNotAvailableError
+from geo_mapping import normalize_geo, SUPPORTED_MELI_GEOS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +210,8 @@ class JobInput:
     style_overrides: Optional[Dict[str, Any]] = None
     output_filename: Optional[str] = None
     output_folder: Optional[str] = None  # Custom S3 folder path (e.g., "TAP_Exports/2026-01")
+    output_bucket: Optional[str] = None  # Override S3 bucket (default: S3_BUCKET env)
+    aspect_ratio: Optional[str] = None  # "9:16" (default) or "16:9" for output resolution
     
     def __post_init__(self):
         """Validate inputs after initialization."""
@@ -246,11 +252,13 @@ class JobInput:
         if self.subtitle_mode == SubtitleMode.MANUAL and not self.manual_srt_url:
             raise ValueError("manual_srt_url required when subtitle_mode='manual'")
         
-        # Validate geo if provided
+        # Validate geo if provided (accept country codes CL, AR, BR or Meli geos MLC, MLA, MLB)
         if self.geo:
-            self.geo = self.geo.upper()
-            if self.geo not in ["MLA", "MLB", "MLC", "MLM"]:
-                raise ValueError(f"geo must be MLA, MLB, MLC, or MLM, got: {self.geo}")
+            self.geo = normalize_geo(self.geo)
+            if self.geo and self.geo not in SUPPORTED_MELI_GEOS:
+                raise ValueError(
+                    f"geo must be one of {sorted(SUPPORTED_MELI_GEOS)} or country code (CL, AR, BR, MX, etc.), got: {self.geo}"
+                )
         
         # Convert string enums if needed
         if isinstance(self.edit_preset, str):
@@ -644,7 +652,8 @@ def generate_style_config(
         },
         "endcard": {
             "enabled": False,
-            "overlap_seconds": 0.5
+            "overlap_seconds": 0.5,
+            "audio_fade_seconds": 0.1
         },
         "postprocess": {
             "enabled": True,
@@ -725,10 +734,30 @@ def generate_style_config(
         ctx.log("Preset: SIMPLE_CONCAT - Minimal processing")
         
     elif preset == EditPreset.HORIZONTAL:
-        # Future: 16:9 output
         style["resolution"] = [1920, 1080]
         ctx.log("Preset: HORIZONTAL - 16:9 output")
-    
+
+    # Aspect ratio overrides resolution (e.g. from LATAM CSV)
+    ar = (job_input.aspect_ratio or "").strip().replace(":", "x").lower()
+    if ar in ("16x9", "16:9"):
+        style["resolution"] = [1920, 1080]
+        ctx.log("Aspect ratio: 16:9 output")
+    elif ar in ("9x16", "9:16") and "resolution" not in style:
+        style["resolution"] = [1080, 1920]
+        ctx.log("Aspect ratio: 9:16 output")
+
+    # When endcard clip is present, ensure endcard overlap is enabled
+    has_endcard = any(
+        (c.clip_type if hasattr(c, "clip_type") else (c.get("type") if isinstance(c, dict) else "")) == "endcard"
+        for c in (job_input.clips or [])
+    )
+    if has_endcard:
+        style.setdefault("endcard", {})
+        style["endcard"]["enabled"] = True
+        if style["endcard"].get("overlap_seconds", 0) <= 0:
+            style["endcard"]["overlap_seconds"] = 0.5
+        ctx.log("Endcard clip present: overlap enabled")
+
     # Apply user overrides (deep merge)
     if job_input.style_overrides:
         style = deep_merge(style, job_input.style_overrides)
@@ -778,10 +807,12 @@ VALID_INPUT_KEYS = {
     "rife_model",
     "input_fps",
     "style_overrides",
-    "output_filename",
-    "output_folder",
-    "project_name",
-    "job_id"
+        "output_filename",
+        "output_folder",
+        "output_bucket",
+        "aspect_ratio",
+        "project_name",
+        "job_id"
 }
 
 VALID_CLIP_KEYS = {
@@ -1383,7 +1414,9 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             input_fps=job_input_raw.get('input_fps', 24),
             style_overrides=job_input_raw.get('style_overrides'),
             output_filename=job_input_raw.get('output_filename'),
-            output_folder=job_input_raw.get('output_folder')
+            output_folder=job_input_raw.get('output_folder'),
+            output_bucket=job_input_raw.get('output_bucket'),
+            aspect_ratio=job_input_raw.get('aspect_ratio')
         )
         ctx.log(f"Input validation passed (geo: {job_input.geo or 'not specified'})")
         
@@ -1392,7 +1425,15 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         
         # Upload to S3
         ctx.log("Step 6/6: Uploading to S3...")
-        bucket = os.environ.get('S3_BUCKET', 'ugc-pipeline-outputs')
+        bucket = (
+            job_input.output_bucket
+            or os.environ.get('S3_BUCKET', 'ugc-pipeline-outputs')
+        )
+        allowed = os.environ.get('ALLOWED_S3_BUCKETS', '').strip()
+        if allowed and bucket not in [b.strip() for b in allowed.split(',') if b.strip()]:
+            raise ValueError(
+                f"output_bucket '{bucket}' not in ALLOWED_S3_BUCKETS ({allowed})"
+            )
         
         # Use custom output_folder if provided, otherwise default to outputs/{job_id}/
         if job_input.output_folder:

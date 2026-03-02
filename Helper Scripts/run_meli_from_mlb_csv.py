@@ -6,15 +6,23 @@ import json
 import os
 import re
 import sys
+import time
+from datetime import datetime
 from typing import Dict, Any
+from urllib.parse import urlparse
 
+import boto3
 import requests
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
+sys.path.insert(0, REPO_DIR)
+from geo_mapping import normalize_geo
 CSV_PATH = os.path.join(REPO_DIR, "Files for Edit - MLB_Approved.s3.csv")
 CASES_PATH = os.path.join(REPO_DIR, "presets", "meli_cases.json")
 LOG_PATH = os.path.join(REPO_DIR, "mlb_meli_from_csv.log")
+DEFAULT_PRESIGN_EXPIRES = 6 * 60 * 60
+_S3_CLIENT = None
 
 
 def load_env_from_dotenv() -> None:
@@ -65,7 +73,8 @@ def parse_parent_from_scene_url(url: str) -> str:
 
 
 def _normalize_url(url: str) -> str:
-    from urllib.parse import quote
+    from urllib.parse import quote, unquote
+    import unicodedata
 
     url = (url or "").strip()
     if url.startswith("https://meli-ai.filmmaker.s3.us-east-2.amazonaws.com/"):
@@ -84,17 +93,85 @@ def _normalize_url(url: str) -> str:
         without_scheme = url[len("s3://"):]
         if "/" in without_scheme:
             bucket, key = without_scheme.split("/", 1)
-            encoded_key = quote(key, safe="/")
+            decoded_key = unquote(key)
+            if "MP-Users/Assets/" in decoded_key and "+" in decoded_key:
+                decoded_key = decoded_key.replace("+", " ")
+            normalized_key = unicodedata.normalize("NFD", decoded_key)
+            encoded_key = quote(normalized_key, safe="/")
             return f"https://s3.us-east-2.amazonaws.com/{bucket}/{encoded_key}"
     elif url.startswith("https://") or url.startswith("http://"):
-        if " " in url:
-            scheme_end = url.find("://") + 3
-            rest = url[scheme_end:]
-            if "/" in rest:
-                host, path = rest.split("/", 1)
-                encoded_path = quote(path, safe="/")
-                return url[:scheme_end] + host + "/" + encoded_path
+        scheme_end = url.find("://") + 3
+        rest = url[scheme_end:]
+        if "/" in rest:
+            host, path = rest.split("/", 1)
+            decoded_path = unquote(path)
+            if "MP-Users/Assets/" in decoded_path and "+" in decoded_path:
+                decoded_path = decoded_path.replace("+", " ")
+            normalized_path = unicodedata.normalize("NFD", decoded_path)
+            encoded_path = quote(normalized_path, safe="/")
+            return url[:scheme_end] + host + "/" + encoded_path
     return url
+
+
+def _get_s3_client(region: str | None = None):
+    global _S3_CLIENT
+    if _S3_CLIENT is None:
+        if region:
+            _S3_CLIENT = boto3.client("s3", region_name=region)
+        else:
+            _S3_CLIENT = boto3.client("s3")
+    return _S3_CLIENT
+
+
+def _extract_s3_bucket_key(url: str):
+    from urllib.parse import unquote
+    import unicodedata
+
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    host = parsed.netloc
+    path = parsed.path or ""
+    if "X-Amz-Signature" in parsed.query:
+        return None
+
+    def _clean_key(raw_key: str) -> str:
+        decoded = unquote(raw_key)
+        if "MP-Users/Assets/" in decoded and "+" in decoded:
+            decoded = decoded.replace("+", " ")
+        return unicodedata.normalize("NFD", decoded)
+
+    if host.endswith(".s3.us-east-2.amazonaws.com"):
+        bucket = host.split(".s3.us-east-2.amazonaws.com")[0]
+        key = _clean_key(path.lstrip("/"))
+        return bucket, key, "us-east-2"
+
+    if host.endswith(".s3.amazonaws.com"):
+        bucket = host.split(".s3.amazonaws.com")[0]
+        key = _clean_key(path.lstrip("/"))
+        return bucket, key, None
+
+    if host in {"s3.us-east-2.amazonaws.com", "s3.amazonaws.com"}:
+        parts = path.lstrip("/").split("/", 1)
+        if len(parts) == 2:
+            bucket, key = parts[0], _clean_key(parts[1])
+            return bucket, key, "us-east-2" if host == "s3.us-east-2.amazonaws.com" else None
+    return None
+
+
+def _presign_if_s3(url: str, expires: int = DEFAULT_PRESIGN_EXPIRES) -> str:
+    if not url:
+        return url
+    info = _extract_s3_bucket_key(url)
+    if not info:
+        return url
+    bucket, key, region = info
+    client = _get_s3_client(region)
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=expires,
+    )
 
 
 def _pick_first(row: Dict[str, str], keys: list[str]) -> str:
@@ -111,16 +188,16 @@ def build_payload(
     default_introcard_url: str,
     output_folder: str,
 ) -> Dict[str, Any]:
-    geo = (row.get("GEO") or "").strip()
-    scene1 = (row.get("scene_1_lipsync") or "").strip()
-    scene2 = (row.get("scene_2_lipsync") or "").strip()
-    scene3 = (row.get("scene_3_lipsync") or "").strip()
-    broll_url = _normalize_url(
+    geo = normalize_geo((row.get("GEO") or "").strip())
+    scene1 = _presign_if_s3(_normalize_url((row.get("scene_1_lipsync") or "").strip()))
+    scene2 = _presign_if_s3(_normalize_url((row.get("scene_2_lipsync") or "").strip()))
+    scene3 = _presign_if_s3(_normalize_url((row.get("scene_3_lipsync") or "").strip()))
+    broll_url = _presign_if_s3(_normalize_url(
         _pick_first(row, ["BROLL S3", "BROLL S3 URL", "Broll", "BRoll"])
-    )
-    endcard_url = _normalize_url(
+    ))
+    endcard_url = _presign_if_s3(_normalize_url(
         _pick_first(row, ["ENDCARD S3", "ENDCARD S3 URL", "Endcard"])
-    )
+    ))
 
     if not (scene1 and scene2 and scene3):
         raise ValueError("missing one or more scene URLs")
@@ -138,11 +215,15 @@ def build_payload(
     clips = []
     if default_introcard_url:
         clips.append({"type": "introcard", "url": default_introcard_url})
+
+    # Use default b-roll configuration (no special handling for pix_no_credito)
+    broll_clip: Dict[str, Any] = {"type": "broll", "url": broll_url}
+
     clips.extend(
         [
             {"type": "scene", "url": scene1},
             {"type": "scene", "url": scene2},
-            {"type": "broll", "url": broll_url},
+            broll_clip,
             {"type": "scene", "url": scene3},
             {"type": "endcard", "url": endcard_url},
         ]
@@ -188,16 +269,18 @@ def main() -> None:
 
     output_folder = "MP-Users/Outputs 02-2026"
 
-    try:
-        if os.path.exists(LOG_PATH):
-            os.remove(LOG_PATH)
-    except OSError:
-        pass
+    log_path = os.path.join(
+        REPO_DIR,
+        f"mlb_meli_from_csv_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+    )
+    global LOG_PATH
+    LOG_PATH = log_path
 
     log(f"Using endpoint {endpoint_id}")
 
     submitted = 0
     total = 0
+    job_map: dict[str, str] = {}
 
     with open(CSV_PATH, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -219,10 +302,41 @@ def main() -> None:
                 continue
 
             run_id = data.get("id")
+            name = f"{parent}"
+            job_map[name] = run_id
             log(f"{parent}: submitted {run_id}")
             submitted += 1
 
     log(f"Submitted {submitted}/{total} jobs")
+
+    if job_map:
+        log("Monitoring job status...")
+        deadline = time.time() + 60 * 60
+        pending = dict(job_map)
+        while pending and time.time() < deadline:
+            done = []
+            for name, job_id in pending.items():
+                try:
+                    status_resp = requests.get(
+                        f"https://api.runpod.ai/v2/{endpoint_id}/status/{job_id}",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=30,
+                    )
+                    status_resp.raise_for_status()
+                    status = status_resp.json().get("status", "UNKNOWN")
+                except Exception as exc:
+                    status = f"ERROR: {exc}"
+                log(f"STATUS {name}: {status}")
+                if status in {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"}:
+                    done.append(name)
+            for name in done:
+                pending.pop(name, None)
+            if pending:
+                time.sleep(20)
+        if pending:
+            log("WARNING: Some jobs still pending after timeout:")
+            for name, job_id in pending.items():
+                log(f"  {name} -> {job_id}")
 
 
 if __name__ == "__main__":

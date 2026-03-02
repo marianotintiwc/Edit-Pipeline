@@ -11,8 +11,20 @@ import numpy as np
 from PIL import Image
 from typing import List, Dict, Any
 
-TARGET_RESOLUTION = (1080, 1920)
+TARGET_RESOLUTION = (1080, 1920)  # 9:16 default
 TARGET_FPS = 30  # Default, can be overridden by frame_interpolation config
+
+
+def _get_target_resolution(style_config: Dict[str, Any] = None) -> tuple:
+    """Resolve output resolution from style (width, height). Default 9:16 (1080x1920)."""
+    if not style_config:
+        return TARGET_RESOLUTION
+    res = style_config.get("resolution")
+    if res and isinstance(res, (list, tuple)) and len(res) >= 2:
+        w, h = int(res[0]), int(res[1])
+        if w > 0 and h > 0:
+            return (w, h)
+    return TARGET_RESOLUTION
 TRANSITION_AUDIO_FADE = 0.05  # seconds
 ENDCARD_AUDIO_FADE_MAX = 0.5  # seconds
 ENDCARD_AUDIO_FADE_DEFAULT = 0.1  # seconds
@@ -918,21 +930,20 @@ def _auto_tune_chroma_key(
     return best_sim
 
 
-def _resize_to_target(clip: VideoFileClip) -> VideoFileClip:
-    """Resize/crop clip to 9:16 (1080x1920)."""
-    target_ratio = TARGET_RESOLUTION[0] / TARGET_RESOLUTION[1]
+def _resize_to_target(clip: VideoFileClip, target_resolution: tuple = None) -> VideoFileClip:
+    """Resize/crop clip to target resolution (width, height). Default 9:16 (1080x1920)."""
+    target = target_resolution or TARGET_RESOLUTION
+    target_ratio = target[0] / target[1]
     clip_ratio = clip.w / clip.h
 
     if clip_ratio > target_ratio:
-        clip = clip.resize(height=TARGET_RESOLUTION[1])
-        clip = clip.crop(x1=clip.w/2 - TARGET_RESOLUTION[0]/2,
-                         x2=clip.w/2 + TARGET_RESOLUTION[0]/2)
+        clip = clip.resize(height=target[1])
+        clip = clip.crop(x1=clip.w / 2 - target[0] / 2, x2=clip.w / 2 + target[0] / 2)
     else:
-        clip = clip.resize(width=TARGET_RESOLUTION[0])
-        clip = clip.crop(y1=clip.h/2 - TARGET_RESOLUTION[1]/2,
-                         y2=clip.h/2 + TARGET_RESOLUTION[1]/2)
+        clip = clip.resize(width=target[0])
+        clip = clip.crop(y1=clip.h / 2 - target[1] / 2, y2=clip.h / 2 + target[1] / 2)
 
-    return clip.resize(TARGET_RESOLUTION)
+    return clip.resize(target)
 
 def load_clips_config(path: str) -> List[Dict[str, Any]]:
     """Loads the clips configuration from a JSON file."""
@@ -998,8 +1009,9 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
 
     previous_fill_source = None
 
+    target_res = _get_target_resolution(style_config)
     target_fps = get_target_fps(style_config)
-    print(f"Processing {len(clips_data)} clips... (target_fps={target_fps})")
+    print(f"Processing {len(clips_data)} clips... (target={target_res[0]}x{target_res[1]}, fps={target_fps})")
     try:
         clip_types = [(c.get("type") or "scene") for c in clips_data]
         print(f"Clip types: {clip_types}")
@@ -1217,19 +1229,19 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     bg_clip = VideoFileClip(bg_path).without_audio()
                     if bg_clip.duration < clip.duration:
                         bg_clip = bg_clip.loop(duration=clip.duration)
-                    bg_clip = _resize_to_target(bg_clip)
-                    clip = _resize_to_target(clip)
+                    bg_clip = _resize_to_target(bg_clip, target_res)
+                    clip = _resize_to_target(clip, target_res)
                     clip = CompositeVideoClip(
                         [bg_clip, clip.set_position("center")],
-                        size=TARGET_RESOLUTION
+                        size=target_res
                     ).set_duration(clip.duration)
                     clip = clip.set_audio(original_audio)
                 else:
                     if alpha_verbose:
                         print_clip_status("Alpha fill enabled but no previous clip available; using normal resize", 3)
-                    clip = _resize_to_target(clip)
+                    clip = _resize_to_target(clip, target_res)
             else:
-                clip = _resize_to_target(clip)
+                clip = _resize_to_target(clip, target_res)
 
             # Apply tiny audio fades to prevent pops at clip boundaries
             if clip.audio:
@@ -1315,7 +1327,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         if _should_invert_mask(introcard_raw.mask, threshold=introcard_invert_threshold):
                             introcard_raw = introcard_raw.set_mask(_invert_mask(introcard_raw.mask))
 
-                    introcard_clip = introcard_raw.resize(TARGET_RESOLUTION)
+                    introcard_clip = introcard_raw.resize(target_res)
                     if introcard_raw.mask is not None and introcard_clip.mask is None:
                         introcard_clip = introcard_clip.set_mask(introcard_raw.mask.resize(introcard_clip.size))
 
@@ -1332,11 +1344,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         bg_clip = VideoFileClip(bg_path).without_audio()
                         if bg_clip.duration < introcard_clip.duration:
                             bg_clip = bg_clip.loop(duration=introcard_clip.duration)
-                        bg_clip = _resize_to_target(bg_clip)
-                        introcard_clip = _resize_to_target(introcard_clip)
+                        bg_clip = _resize_to_target(bg_clip, target_res)
+                        introcard_clip = _resize_to_target(introcard_clip, target_res)
                         introcard_clip = CompositeVideoClip(
                             [bg_clip, introcard_clip.set_position("center")],
-                            size=TARGET_RESOLUTION
+                            size=target_res
                         ).set_duration(introcard_clip.duration).set_audio(introcard_clip.audio)
                         print("     Introcard alpha-fill: enabled (b-roll style)")
                     elif introcard_alpha_config.get("enabled", False) and not introcard_alpha_config.get("use_blur_background", False):
@@ -1439,7 +1451,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             endcard_raw = endcard_raw.set_mask(_invert_mask(endcard_raw.mask))
 
                     # Resize endcard to target resolution
-                    endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                    endcard_clip = endcard_raw.resize(target_res)
                     if endcard_raw.mask is not None and endcard_clip.mask is None:
                         endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
 
@@ -1470,11 +1482,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         bg_clip = VideoFileClip(bg_path).without_audio()
                         if bg_clip.duration < endcard_clip.duration:
                             bg_clip = bg_clip.loop(duration=endcard_clip.duration)
-                        bg_clip = _resize_to_target(bg_clip)
-                        endcard_clip = _resize_to_target(endcard_clip)
+                        bg_clip = _resize_to_target(bg_clip, target_res)
+                        endcard_clip = _resize_to_target(endcard_clip, target_res)
                         endcard_clip = CompositeVideoClip(
                             [bg_clip, endcard_clip.set_position("center")],
-                            size=TARGET_RESOLUTION
+                            size=target_res
                         ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                         print("     Endcard alpha-fill: enabled (b-roll style)")
                     elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
@@ -1572,7 +1584,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             _log_mask_stats(endcard_raw.mask, "Endcard mask (pre-invert)", indent=4)
 
                         # Resize endcard to target resolution
-                        endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        endcard_clip = endcard_raw.resize(target_res)
                         if endcard_raw.mask is not None and endcard_clip.mask is None:
                             endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
 
@@ -1620,11 +1632,11 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             bg_clip = VideoFileClip(bg_path).without_audio()
                             if bg_clip.duration < endcard_clip.duration:
                                 bg_clip = bg_clip.loop(duration=endcard_clip.duration)
-                            bg_clip = _resize_to_target(bg_clip)
-                            endcard_clip = _resize_to_target(endcard_clip)
+                            bg_clip = _resize_to_target(bg_clip, target_res)
+                            endcard_clip = _resize_to_target(endcard_clip, target_res)
                             endcard_clip = CompositeVideoClip(
                                 [bg_clip, endcard_clip.set_position("center")],
-                                size=TARGET_RESOLUTION
+                                size=target_res
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
                         elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
@@ -1671,13 +1683,13 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                             return (0, 0)
                         else:
                             progress = (t - (prev_clip.duration - transition_duration)) / transition_duration
-                            x = -TARGET_RESOLUTION[0] * progress
+                            x = -target_res[0] * progress
                             return (x, 0)
                     
                     def make_slide_in(t):
                         if t < transition_duration:
                             progress = t / transition_duration
-                            x = TARGET_RESOLUTION[0] * (1 - progress)
+                            x = target_res[0] * (1 - progress)
                             return (x, 0)
                         else:
                             return (0, 0)
@@ -1722,7 +1734,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 current_time = endcard_start + endcard_clip.duration
             
             print("Compositing clips with transitions...")
-            final_clip = CompositeVideoClip(final_clips, size=TARGET_RESOLUTION)
+            final_clip = CompositeVideoClip(final_clips, size=target_res)
             final_clip = final_clip.set_duration(current_time)
             final_clip.fps = get_target_fps(style_config)
         else:
@@ -1732,7 +1744,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
             # Add introcard for non-transition mode
             if introcard_clip:
                 introcard_positioned = introcard_clip.set_start(0)
-                final_clip = CompositeVideoClip([final_clip, introcard_positioned], size=TARGET_RESOLUTION)
+                final_clip = CompositeVideoClip([final_clip, introcard_positioned], size=target_res)
                 final_clip = final_clip.set_duration(final_clip.duration)
 
             # Add endcard for non-transition mode
@@ -1760,7 +1772,7 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
                 
-                final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
+                final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=target_res)
                 final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)
             
             final_clip.fps = get_target_fps(style_config)
@@ -1796,7 +1808,8 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
     scenes, NOT to brolls (which are already real footage).
     """
     from moviepy.editor import AudioFileClip
-    
+
+    target_res = _get_target_resolution(style_config)
     start_time = time.time()
     project_name = os.path.basename(project_dir.rstrip('/'))
     print(f"\n  📁 Project: {project_name}")
@@ -2027,7 +2040,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                 print_clip_status(f"Using full duration: {clip.duration:.2f}s", 3)
             
             # Resize/Crop to 9:16 (1080x1920)
-            print_clip_status(f"Resizing {clip.w}x{clip.h} → {TARGET_RESOLUTION[0]}x{TARGET_RESOLUTION[1]}", 3)
+            print_clip_status(f"Resizing {clip.w}x{clip.h} → {target_res[0]}x{target_res[1]}", 3)
 
             if is_broll and (broll_has_alpha or alpha_force_key) and alpha_fill_enabled:
                 if previous_fill_source:
@@ -2042,19 +2055,19 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     bg_clip = VideoFileClip(bg_path).without_audio()
                     if bg_clip.duration < clip.duration:
                         bg_clip = bg_clip.loop(duration=clip.duration)
-                    bg_clip = _resize_to_target(bg_clip)
-                    clip = _resize_to_target(clip)
+                    bg_clip = _resize_to_target(bg_clip, target_res)
+                    clip = _resize_to_target(clip, target_res)
                     clip = CompositeVideoClip(
                         [bg_clip, clip.set_position("center")],
-                        size=TARGET_RESOLUTION
+                        size=target_res
                     ).set_duration(clip.duration)
                     clip = clip.set_audio(original_audio)
                 else:
                     if alpha_verbose:
                         print_clip_status("Alpha fill enabled but no previous clip available; using normal resize", 3)
-                    clip = _resize_to_target(clip)
+                    clip = _resize_to_target(clip, target_res)
             else:
-                clip = _resize_to_target(clip)
+                clip = _resize_to_target(clip, target_res)
             
             clip_elapsed = time.time() - clip_start_time
             print_clip_status(f"✅ Done ({clip_elapsed:.1f}s)", 3)
@@ -2123,7 +2136,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                             endcard_raw = VideoFileClip(endcard_path, has_mask=True)
 
                         # Resize endcard to target resolution
-                        endcard_clip = endcard_raw.resize(TARGET_RESOLUTION)
+                        endcard_clip = endcard_raw.resize(target_res)
                         if endcard_raw.mask is not None and endcard_clip.mask is None:
                             endcard_clip = endcard_clip.set_mask(endcard_raw.mask.resize(endcard_clip.size))
                         if endcard_alpha_config.get("enabled", False) and endcard_alpha_config.get("use_blur_background", False) and previous_fill_source:
@@ -2139,11 +2152,11 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                             bg_clip = VideoFileClip(bg_path).without_audio()
                             if bg_clip.duration < endcard_clip.duration:
                                 bg_clip = bg_clip.loop(duration=endcard_clip.duration)
-                            bg_clip = _resize_to_target(bg_clip)
-                            endcard_clip = _resize_to_target(endcard_clip)
+                            bg_clip = _resize_to_target(bg_clip, target_res)
+                            endcard_clip = _resize_to_target(endcard_clip, target_res)
                             endcard_clip = CompositeVideoClip(
                                 [bg_clip, endcard_clip.set_position("center")],
-                                size=TARGET_RESOLUTION
+                                size=target_res
                             ).set_duration(endcard_clip.duration).set_audio(endcard_clip.audio)
                             print("     Endcard alpha-fill: enabled (b-roll style)")
                         elif endcard_alpha_config.get("enabled", False) and not endcard_alpha_config.get("use_blur_background", False):
@@ -2182,7 +2195,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     def make_slide_in(t, trans_dur=transition_duration):
                         if t < trans_dur:
                             progress = t / trans_dur
-                            x = TARGET_RESOLUTION[0] * (1 - progress)
+                            x = target_res[0] * (1 - progress)
                             return (x, 0)
                         else:
                             return (0, 0)
@@ -2222,7 +2235,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                 current_time = endcard_start + endcard_clip.duration
             
             print("     Compositing clips with transitions...")
-            final_clip = CompositeVideoClip(final_clips, size=TARGET_RESOLUTION)
+            final_clip = CompositeVideoClip(final_clips, size=target_res)
             final_clip = final_clip.set_duration(current_time)
             final_clip.fps = get_target_fps(style_config)
         else:
@@ -2261,7 +2274,7 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                 else:
                     endcard_positioned = endcard_clip.set_start(endcard_start)
                 
-                final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=TARGET_RESOLUTION)
+                final_clip = CompositeVideoClip([final_clip, endcard_positioned], size=target_res)
                 final_clip = final_clip.set_duration(endcard_start + endcard_clip.duration)
             
             final_clip.fps = get_target_fps(style_config)

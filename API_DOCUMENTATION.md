@@ -54,6 +54,12 @@ Content-Type: application/json
 }
 ```
 
+### Private S3 Assets (Presigned URLs)
+
+If your assets are private, you **must** send **presigned URLs**. The RunPod container cannot access your local AWS profile.
+
+**Important:** Do not pre-encode keys before signing; double-encoding produces 404s. Normalize MP-Users asset keys to **NFD** and treat `+` as space when building the presigned URL.
+
 ### Full Example (All Options)
 
 ```json
@@ -117,7 +123,8 @@ Content-Type: application/json
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `project_name` | string | auto-generated | Project identifier. **Include GEO suffix for endcard** (e.g., `"my_video-MLA"`) |
-| `geo` | string | `null` | Geographic region: `"MLA"` (Argentina), `"MLB"` (Brazil), `"MLM"` (Mexico). Affects language detection. |
+| `geo` | string | `null` | Geographic region. Accepts MercadoLibre geos (`MLA`, `MLB`, `MLC`, `MLM`) or country codes (`AR`, `BR`, `CL`, `MX`). Maps: CL→MLC, AR→MLA, BR→MLB, MX→MLM, etc. Affects Whisper language. |
+| `output_bucket` | string | `S3_BUCKET` env | Override S3 bucket for output. Use with `output_folder` to write to a specific bucket. If `ALLOWED_S3_BUCKETS` env is set, bucket must be in allowed list. |
 | `music_url` | string | `null` | URL to music file, `"random"` for random from assets, or `null` for no music |
 | `music_volume` | float | `0.3` | Music volume (0.0 - 1.0) |
 | `loop_music` | bool | `true` | Loop music to match video length |
@@ -126,8 +133,14 @@ Content-Type: application/json
 | `enable_interpolation` | bool | `true` | Enable RIFE frame interpolation |
 | `input_fps` | float | `24` | Source video frame rate for RIFE interpolation (e.g., 24, 30). Must match your source clips. |
 | `rife_model` | string | `"rife-v4"` | RIFE model: `"rife-v4"` or `"rife-v4.6"` |
-| `style_overrides` | object | `null` | Override any `style.json` settings |
+| `style_overrides` | object | `null` | Override any `style.json` settings. Use `resolution: [1920, 1080]` for 16:9, `[1080, 1920]` for 9:16. Use `endcard: { enabled: true, overlap_seconds: 0.5 }` for endcard overlap with scene 3. |
 | `output_filename` | string | auto | Custom output filename |
+| `output_folder` | string | `outputs/{job_id}/` | S3 key prefix (folder path) for output. Combined with `output_bucket` or `S3_BUCKET` env. |
+| `aspect_ratio` | string | `"9:16"` | Output aspect ratio: `"9:16"` (1080x1920 vertical) or `"16:9"` (1920x1080 horizontal). Pass via `style_overrides.resolution` as `[width, height]` for custom sizes. |
+
+### Common 404 Cause (Assets Not Found)
+- The asset **filename in S3 must match exactly** (including accents/spacing).
+- If you see 404s on endcards/b-rolls, list the bucket and update the CSV with the real key name.
 
 ### Clip Object
 
@@ -153,6 +166,8 @@ Content-Type: application/json
 - `"end_time": 10.0` — Cut video at 10 seconds
 - `"end_time": -0.5` — Cut 0.5 seconds before the natural end
 - `"start_time": 2.0, "end_time": 8.0` — Use only seconds 2-8
+
+**Nota:** `"end_time": -1` recorta **1 segundo completo** del final del clip.
 
 ---
 
@@ -215,6 +230,43 @@ The peak limiter automatically reduces music volume if it exceeds the threshold,
 3. `style.json` defaults
 
 **Nota:** `alpha_detection` es global (no por-clip). Se define en `style_overrides.alpha_detection` o en `style.json`.
+
+### Endcard Overlap + Audio Fade (Scene 3)
+
+- The last **N seconds** of Scene 3 overlap the first **N seconds** of the endcard when `endcard.overlap_seconds = N`.
+- Scene 3 audio fades out during that overlap using `endcard.audio_fade_seconds` (default: `0.1s`).
+- The fade only applies when overlap is greater than 0.
+
+### B-roll Alpha Channel Fix (Important!)
+
+**Problem:** Some b-roll assets (especially TAP/MLB .mov files) appear with inverted alpha channels in the output—the transparent areas become opaque and vice versa.
+
+**Cause:** The `auto_invert_alpha` feature incorrectly detects these assets as needing inversion.
+
+**Solution:** Explicitly disable auto-inversion in `style_overrides`:
+
+```json
+{
+  "input": {
+    "clips": [...],
+    "style_overrides": {
+      "broll_alpha_fill": {
+        "enabled": true,
+        "invert_alpha": false,
+        "auto_invert_alpha": false
+      }
+    }
+  }
+}
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable alpha compositing for b-roll |
+| `invert_alpha` | bool | `false` | Manually invert the alpha channel |
+| `auto_invert_alpha` | bool | `true` | Auto-detect if alpha needs inversion (can cause issues!) |
+
+**Recommendation:** For MELI TAP assets, always set `auto_invert_alpha: false` to preserve the original alpha channel.
 
 **Example:** b-roll con blur fuerte y endcard con overlap distinto
 
@@ -477,11 +529,28 @@ The final video is automatically uploaded to S3. Configure via environment varia
 | `AWS_ACCESS_KEY_ID` | ✅ | AWS access key |
 | `AWS_SECRET_ACCESS_KEY` | ✅ | AWS secret key |
 | `AWS_REGION` | ❌ | Default: `us-east-1` |
-| `S3_BUCKET` | ✅ | Bucket for output videos |
+| `S3_BUCKET` | ✅ | Default bucket for output videos |
+| `ALLOWED_S3_BUCKETS` | ❌ | Comma-separated list of allowed buckets when using `output_bucket`. If set, per-job `output_bucket` must be in this list. |
 
-**Output Path:** `s3://{S3_BUCKET}/outputs/{job_id}/final.mp4`
+**Output Path:** `s3://{bucket}/{output_folder}/{filename}` — bucket is `output_bucket` (if provided) or `S3_BUCKET`; folder is `output_folder` or `outputs/{job_id}/`.
 
 **Endcards Path:** `s3://{S3_BUCKET}/assets/endcards/` (upload your endcard files here)
+
+### Geo Mapping (Country Codes)
+
+The `geo` parameter accepts both MercadoLibre geos and ISO country codes:
+
+| Country | Code | Meli Geo |
+|---------|------|----------|
+| Argentina | AR | MLA |
+| Brazil | BR | MLB |
+| Chile | CL | MLC |
+| Mexico | MX | MLM |
+| Colombia | CO | MCO |
+| Peru | PE | MPE |
+| Uruguay | UY | MLU |
+| Ecuador | EC | MEC |
+| Venezuela | VE | MLV |
 
 ---
 
