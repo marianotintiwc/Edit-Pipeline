@@ -172,12 +172,12 @@ def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
             "right": 516,
         }
     else:
-        style_overrides["margin_bottom"] = 108  # TikTok 9:16 @ 1080x1920 (54*2)
+        style_overrides["margin_bottom"] = 704  # TikTok 9:16 @ 1080x1920 (352*2)
         style_overrides["tiktok_safe_margins"] = {
             "ref_width": 540,
             "ref_height": 960,
             "top": 126,
-            "bottom": 54,
+            "bottom": 352,
             "left": 60,
             "right": 120,
             "zone_height": 780,

@@ -101,7 +101,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         sy = video_h / ref_h
         margin_left = int(tiktok.get("left", 60) * sx)
         margin_right = int(tiktok.get("right", 120) * sx)
-        margin_bottom = int(tiktok.get("bottom", 54) * sy)
+        margin_bottom = int(tiktok.get("bottom", 352) * sy)
         margin_top = int(tiktok.get("top", 126) * sy)
         safe_width = video_w - margin_left - margin_right
     elif not is_vertical and uac:
