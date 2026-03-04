@@ -87,6 +87,24 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
     
     video_w, video_h = video_clip.size
 
+    # Safe zone: tiktok (9:16) or uac (16:9)
+    margin_left, margin_right, safe_width = 0, 0, video_w
+    tiktok = style_config.get("tiktok_safe_margins", {})
+    uac = style_config.get("uac_16x9_margins", {})
+    is_vertical = video_h > video_w
+    if is_vertical and tiktok:
+        ref_w = tiktok.get("ref_width", 540)
+        sx = video_w / ref_w
+        margin_left = int(tiktok.get("left", 0) * sx)
+        margin_right = int(tiktok.get("right", 0) * sx)
+        safe_width = video_w - margin_left - margin_right
+    elif not is_vertical and uac:
+        ref_w = uac.get("ref_width", 1920)
+        sx = video_w / ref_w
+        margin_left = int(uac.get("left", 0) * sx)
+        margin_right = int(uac.get("right", 0) * sx)
+        safe_width = video_w - margin_left - margin_right
+
     # SUPERSAMPLING FACTOR (3x for high quality antialiasing)
     SS = 3.0
     
@@ -161,9 +179,9 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         bg_color_val = None
         
         if is_active:
-            # Get bg_color from highlight config
+            # Get bg_color from highlight config; text stays base color unless text_color override
             bg_color_val = style_config.get("highlight", {}).get("bg_color", "#FFE600")
-            c = style_config.get("highlight", {}).get("color", "black")
+            c = style_config.get("highlight", {}).get("text_color", color)
             # Warning: We will render BG separately to allow Shadow in between.
             # So here we keep bg='transparent' for the text clip itself if we are returning info.
             if get_bg_info:
@@ -258,7 +276,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 if is_active:
                     highlight_cfg = style_config.get("highlight", {})
                     bg_color_val = highlight_cfg.get("bg_color", "#FFE600")
-                    c = highlight_cfg.get("color", "black")
+                    c = highlight_cfg.get("text_color", color)
                     sc = highlight_cfg.get("stroke_color", sc)
                     sw = (highlight_cfg.get("stroke_width", sw_render))
                     if get_bg_info:
@@ -303,7 +321,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 if is_active:
                     highlight_cfg = style_config.get("highlight", {})
                     bg_color_val = highlight_cfg.get("bg_color", "#FFE600")
-                    c = highlight_cfg.get("color", "black")
+                    c = highlight_cfg.get("text_color", color)
                     sc = highlight_cfg.get("stroke_color", sc)
                     sw = (highlight_cfg.get("stroke_width", sw_render))
                     if get_bg_info:
@@ -341,12 +359,28 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             if left_clip: total_w += spacing
             if right_clip: total_w += spacing
             
-            # Calculate starting X to center the whole line
-            # video_w is available
-            start_x = (video_w - total_w) // 2
-            
+            # Center within safe zone; scale down if line overflows
+            line_scale = 1.0
+            if total_w > safe_width and safe_width > 0:
+                line_scale = safe_width / total_w
+            if line_scale < 1.0:
+                if left_clip:
+                    left_clip = left_clip.resize(line_scale)
+                if active_clip:
+                    active_clip = active_clip.resize(line_scale)
+                if right_clip:
+                    right_clip = right_clip.resize(line_scale)
+                w_left = left_clip.w if left_clip else 0
+                w_active = active_clip.w if active_clip else 0
+                w_right = right_clip.w if right_clip else 0
+                total_w = w_left + w_active + w_right
+                if left_clip:
+                    total_w += spacing
+                if right_clip:
+                    total_w += spacing
+            start_x = margin_left + (safe_width - total_w) // 2
             current_x = start_x
-            
+
             # Position and add clips
             # Position and add clips
             if left_clip:
@@ -398,6 +432,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                          pos_x_offset = 0
                          pos_y_offset = 0
 
+                     if line_scale < 1.0:
+                         s_clip = s_clip.resize(line_scale)
                      effective_opacity = shadow_opacity
 
                      s_clip = s_clip.set_opacity(effective_opacity)
@@ -415,10 +451,11 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 # 2. Shadow (if enabled)
                 # 3. Text
                 
-                # To do this, we need 'active_clip' to be just the text (transparent), and we create a separate bg.
-                # Re-create active clip asking for bg info
+                # Re-create active clip asking for bg info (transparent text for bg box overlay)
                 active_text_clip, bg_color_hex = create_part(active_text, is_active=True, get_bg_info=True)
-                
+                if line_scale < 1.0 and active_text_clip:
+                    active_text_clip = active_text_clip.resize(line_scale)
+
                 if active_text_clip:
                     # Calculate dimensions
                     # Add some padding for the box
@@ -493,9 +530,10 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                              pos_x_offset = 0
                              pos_y_offset = 0
 
+                         if line_scale < 1.0:
+                             s_clip = s_clip.resize(line_scale)
                          if anim_enabled and anim_type == 'pop_in':
                              s_clip = s_clip.resize(resize_func)
-                         
                          # If blur is high, the spread reduces visibility significantly.
                          # We arguably shouldn't reduce opacity further, or at least keep it high.
                          # For the user's specific case (Yellow Box), we need higher opacity.
@@ -565,6 +603,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                          pos_x_offset = 0
                          pos_y_offset = 0
 
+                     if line_scale < 1.0:
+                         s_clip = s_clip.resize(line_scale)
                      effective_opacity = shadow_opacity
 
                      s_clip = s_clip.set_opacity(effective_opacity)
@@ -577,7 +617,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             subtitle_clips.extend(clips_to_compose)
             continue # Skip standard rendering
 
-        # Standard rendering (fallback)
+        # Standard rendering (fallback) - center within safe zone
+        std_pos_x = margin_left
         if shadow_enabled:
              s_clip = TextClip(
                 text,
@@ -587,7 +628,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 stroke_color=None,
                 stroke_width=0,
                 method='caption',
-                size=(video_w * 0.9 * SS, None),
+                size=(safe_width * SS, None),
                 align='center'
              )
              
@@ -644,16 +685,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
              effective_opacity = shadow_opacity
 
              s_clip = s_clip.set_opacity(effective_opacity)
-             s_clip = s_clip.set_start(start_time).set_duration(duration).set_position((pos_x if pos_x != 'center' else 'center', pos_y + shadow_offset if isinstance(pos_y, int) else 'center'))
-             
-             # Re-eval pos logic for shadow
-             s_pos_x = pos_x
-             s_pos_y = pos_y
-             
-             # If pos is integer, add offset
-             if isinstance(s_pos_x, (int, float)): s_pos_x += shadow_offset + pos_x_offset
-             if isinstance(s_pos_y, (int, float)): s_pos_y += shadow_offset + pos_y_offset
-             
+             s_pos_x = std_pos_x + shadow_offset + pos_x_offset
+             s_pos_y = pos_y + shadow_offset + pos_y_offset
              s_clip = s_clip.set_start(start_time).set_duration(duration).set_position((s_pos_x, s_pos_y))
              subtitle_clips.append(s_clip)
 
@@ -666,13 +699,12 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             sw_render,
             'transparent',
             'caption',
-            size=(video_w * 0.9 * SS, None),
+            size=(safe_width * SS, None),
             align='center'
         )
         # Downsample
         txt_clip = txt_clip.resize(1.0/SS)
-        
-        txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((pos_x, pos_y))
+        txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((std_pos_x, pos_y))
         
         # Animation
         if anim_enabled and anim_type == 'pop_in':

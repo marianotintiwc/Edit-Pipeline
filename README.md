@@ -46,6 +46,44 @@ The standard configuration for MercadoLibre UGC videos. Full preset saved in `pr
 | **Whisper Model** | `large` | Best accuracy |
 | **Color Grading** | `disabled` | Raw look |
 
+#### Safe Zones & Margins (Subtitles)
+
+The pipeline enforces safe zones so subtitles stay within approved content areas. Margins are applied by default regardless of profile.
+
+**TikTok (9:16 vertical)** — Reference `margenesdeseguridad_tiktok_new` (540×960):
+
+| Edge | Pixels | Notes |
+|------|--------|-------|
+| top | 126 | |
+| bottom | 54 | |
+| left | 60 | |
+| right | 120 | |
+| zone_height | 780 | |
+
+**UAC 16:9 (horizontal)** — Reference `Margenes UAC_16x9.png` (4000×2250). Zona prohibida en rojo; zona segura en blanco. Calculado con maximal rectangle sobre la imagen.
+
+| Edge | 4000×2250 | 1920×1080 | 1280×720 |
+|------|-----------|-----------|----------|
+| top | 83 | 40 | 27 |
+| bottom | 1050 | 504 | 336 |
+| left | 218 | 105 | 70 |
+| right | 1074 | 516 | 344 |
+
+Config structure (16:9 reference 1920×1080):
+
+```json
+{
+  "uac_16x9_margins": {
+    "ref_width": 1920,
+    "ref_height": 1080,
+    "top": 40,
+    "bottom": 504,
+    "left": 105,
+    "right": 516
+  }
+}
+```
+
 ### S3 Assets (Presigned + Normalization)
 
 - For **private S3 assets**, always send **presigned URLs** (RunPod cannot use your local AWS profile).

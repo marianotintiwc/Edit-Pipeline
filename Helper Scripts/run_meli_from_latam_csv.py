@@ -9,6 +9,7 @@ LATAM alpha detection config:
 Outputs: s3://latam-ai.filmmaker/LATAM/LATAM_Exports/
 Geo: MLC (endpoint accepts MLC, MLA, MLB only; CL maps to MLC)
 """
+import argparse
 import csv
 import json
 import os
@@ -23,7 +24,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
 sys.path.insert(0, REPO_DIR)
 from geo_mapping import normalize_geo
-CSV_PATH = os.path.join(REPO_DIR, "LATAM_edit_outputs_urls.csv")
+DEFAULT_CSV = "LATAM_edit_outputs_urls.csv"
 CASES_PATH = os.path.join(REPO_DIR, "presets", "meli_cases.json")
 LOG_PATH = os.path.join(REPO_DIR, "latam_meli_from_csv.log")
 
@@ -31,7 +32,7 @@ LOG_PATH = os.path.join(REPO_DIR, "latam_meli_from_csv.log")
 OUTPUT_FOLDER = "LATAM/LATAM_Exports"
 OUTPUT_BUCKET = "latam-ai.filmmaker"
 
-# LATAM alpha config from detection
+# LATAM alpha config (proven working)
 LATAM_BROLL_ALPHA = {
     "enabled": True,
     "force_chroma_key": False,
@@ -45,7 +46,12 @@ LATAM_ENDCARD_ALPHA = {
     "use_blur_background": False,
     "invert_alpha": False,
     "auto_invert_alpha": False,
+    "chroma_key_color": "0x000000",
+    "chroma_key_similarity": 0.04,
+    "chroma_key_blend": 0.0,
+    "edge_feather": 0,
 }
+ENDCARD_OVERLAP = 0.75
 
 
 def load_env_from_dotenv() -> None:
@@ -92,8 +98,11 @@ def _normalize_url(url: str) -> str:
         if "/" in without_scheme:
             bucket, key = without_scheme.split("/", 1)
             encoded_key = quote(key, safe="/")
-            return f"https://s3.us-east-2.amazonaws.com/{bucket}/{encoded_key}"
+            url = f"https://s3.us-east-2.amazonaws.com/{bucket}/{encoded_key}"
     if url.startswith("https://") or url.startswith("http://"):
+        # S3 objects use -MLC- (MercadoLibre Chile); CSV may use -CL-
+        if "latam-ai.filmmaker" in url and "-CL-" in url:
+            url = url.replace("-CL-", "-MLC-")
         return url
     return url
 
@@ -130,7 +139,7 @@ def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
         {"type": "scene", "url": scene2},
         {"type": "broll", "url": broll_url},
         {"type": "scene", "url": scene3},
-        {"type": "endcard", "url": endcard_url, "overlap_seconds": 0.5},
+        {"type": "endcard", "url": endcard_url, "overlap_seconds": ENDCARD_OVERLAP},
     ]
 
     safe_aspect = _sanitize_aspect(aspect_ratio)
@@ -144,10 +153,35 @@ def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
     style_overrides = {
         "broll_alpha_fill": dict(LATAM_BROLL_ALPHA),
         "endcard_alpha_fill": dict(LATAM_ENDCARD_ALPHA),
-        "highlight": {"enabled": True, "bg_color": "#4257E8"},
-        "endcard": {"enabled": True, "overlap_seconds": 0.5},
+        "color": "white",
+        "stroke_color": "black",
+        "stroke_width": 8,
+        "highlight": {"enabled": True, "bg_color": "#1b0088"},
+        "endcard": {"enabled": True, "overlap_seconds": ENDCARD_OVERLAP, "audio_fade_seconds": 0.1},
         "resolution": resolution,
     }
+    # Safe zones: TikTok (9:16) and UAC 16:9 - margin_bottom keeps subtitles in safe area
+    if is_16x9:
+        style_overrides["margin_bottom"] = 504  # UAC 16:9 @ 1920x1080
+        style_overrides["uac_16x9_margins"] = {
+            "ref_width": 1920,
+            "ref_height": 1080,
+            "top": 40,
+            "bottom": 504,
+            "left": 105,
+            "right": 516,
+        }
+    else:
+        style_overrides["margin_bottom"] = 108  # TikTok 9:16 @ 1080x1920 (54*2)
+        style_overrides["tiktok_safe_margins"] = {
+            "ref_width": 540,
+            "ref_height": 960,
+            "top": 126,
+            "bottom": 54,
+            "left": 60,
+            "right": 120,
+            "zone_height": 780,
+        }
 
     return {
         "input": {
@@ -167,8 +201,28 @@ def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    if not os.path.exists(CSV_PATH):
-        raise SystemExit(f"CSV not found: {CSV_PATH}")
+    parser = argparse.ArgumentParser(description="Submit LATAM edit jobs from CSV")
+    parser.add_argument(
+        "--csv",
+        default=os.path.join(REPO_DIR, DEFAULT_CSV),
+        help=f"Path to CSV (default: {DEFAULT_CSV})",
+    )
+    parser.add_argument("--limit", type=int, default=0, help="Max jobs to submit (0=all)")
+    parser.add_argument("--aspect", default="", help="Filter by aspect_ratio (e.g. 16:9 or 9:16)")
+    args = parser.parse_args()
+    csv_path = args.csv
+    if not os.path.isabs(csv_path):
+        for base in [os.getcwd(), REPO_DIR]:
+            candidate = os.path.normpath(os.path.join(base, csv_path))
+            if os.path.exists(candidate):
+                csv_path = os.path.abspath(candidate)
+                break
+        else:
+            csv_path = os.path.abspath(os.path.join(os.getcwd(), csv_path))
+    else:
+        csv_path = args.csv
+    if not os.path.exists(csv_path):
+        raise SystemExit(f"CSV not found: {csv_path}")
 
     load_env_from_dotenv()
 
@@ -186,9 +240,9 @@ def main() -> None:
     except OSError:
         pass
 
-    log("LATAM Edit - Subtitle highlight: #4257E8 (Light Indigo)")
+    log("LATAM Edit - Text: white+black outline, highlight: #1b0088, safe zones, endcard 0.75s")
     log(f"Using endpoint {endpoint_id}")
-    log(f"CSV: {CSV_PATH}")
+    log(f"CSV: {csv_path}")
     log(f"Output folder: {OUTPUT_FOLDER}")
     log(
         "Alpha config: broll force_chroma_key=False, use_blur_background=True; "
@@ -196,9 +250,14 @@ def main() -> None:
     )
 
     jobs = []
-    with open(CSV_PATH, newline="", encoding="utf-8") as f:
+    aspect_filter = (args.aspect or "").strip()
+    with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            if aspect_filter and (row.get("aspect_ratio") or "").strip() != aspect_filter:
+                continue
+            if args.limit and len(jobs) >= args.limit:
+                break
             try:
                 payload = build_payload(row)
             except ValueError as e:

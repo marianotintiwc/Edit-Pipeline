@@ -47,7 +47,8 @@
 
   "endcard": {
     "enabled": false,
-    "overlap_seconds": 0.5
+    "overlap_seconds": 0.5,
+    "audio_fade_seconds": 0.1
   },
 
   "broll_alpha_fill": {

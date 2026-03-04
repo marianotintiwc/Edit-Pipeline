@@ -70,6 +70,7 @@
     "endcard": {
         "enabled": true,
         "overlap_seconds": 0.5,
+        "audio_fade_seconds": 0.1,
         "_comment": "S3-based endcards: downloaded at runtime. Set s3_bucket or use S3_BUCKET env var",
         "s3_bucket": null,
         "s3_prefix": "assets/endcards/",

@@ -8,13 +8,13 @@
 ## Critical workflows
 - Local CLI: `ugc_pipeline.py` orchestrates 5 steps (style → clips → audio → subtitles → export) and expects assets under `assets/` and configs under `config/`.
 - Serverless: use `handler.py` with RunPod; environment variables for S3 are required (see `README.md`).
-- RunPod helper CLI: use `Helper Scripts/runpod_cli.py` for submit/status/poll and endpoint image updates (consolidated helper).
+- Helper utilities: prefer `python -m ugc_tools ...` (CSV prep, RunPod monitoring/retry, asset uploads, S3 rename/upload helpers). See `TOOLING.md`.
 - Validation: `startup_check.py` validates FFmpeg, ImageMagick, Vulkan/RIFE, CUDA; `test_local.py` exercises validation and handler parsing.
 
 ## Project-specific conventions
 - Input format supports both legacy `video_urls` and new ordered `clips` with `scene`/`broll` types; negative `end_time` trims “from end” (handled in `generate_clips_config()` in `handler.py`).
 - Post-processing is applied per-scene before concatenation (AI scenes only) in `ugc-pipeline/clips.py`; b-roll skips postprocess.
-- Subtitles: `subtitle_mode=auto` triggers Whisper; `manual` downloads SRT; `none` skips. ImageMagick (`magick`) must be available for MoviePy `TextClip` (`ugc-pipeline/subtitles.py`).
+- Subtitles: `subtitle_mode=auto` triggers Whisper; `manual` downloads SRT; `none` skips. ImageMagick (`magick`) must be available for MoviePy `TextClip` (`ugc-pipeline/subtitles.py`). Safe zones: `tiktok_safe_margins` (9:16, ref 540×960) and `uac_16x9_margins` (16:9, ref 1920×1080) constrain subtitle placement; see README "Safe Zones & Margins".
 - Music: `music_url="random"` selects from `assets/audio/`; loop/volume come from `style.json` or request overrides.
 - Endcard transparency: `endcard_alpha_fill.enabled` controls alpha-fill; set `use_blur_background=true` only when you want blurred fill from the previous clip.
 - Audio pop mitigation: tiny boundary fades (~0.05s) run even with transitions; endcard overlap fades are applied automatically.
@@ -39,5 +39,14 @@
 ## When editing
 - Keep pipeline step order consistent with `ugc_pipeline.py` / `handler.py`.
 - Use MoviePy clips from `ugc-pipeline/` modules; export settings (H.264, CRF 23) are centralized in `ugc-pipeline/export.py`.
+
+## Helper Scripts & utilities guidance (important)
+- **Do not add new one-off scripts** in `Helper Scripts/` unless absolutely necessary. Prefer adding a `ugc_tools` subcommand instead.
+- **No absolute paths** (`/Users/...`) in code. Always resolve paths relative to repo root.
+- **Centralize shared logic** (env loading, URL parsing, CSV IO, S3 operations, RunPod polling) in `ugc_tools/` so multiple scripts/agents can reuse it.
+- If you touch helper workflows, **update docs**:
+  - `README.md` (high-level utilities section)
+  - `TOOLING.md` (how to run)
+  - `TOOLING_INVENTORY.md` (script catalog + migration map)
 
   wait for your confirmation that new docker builds are finished before sending a job when testing or debugging serverless.
