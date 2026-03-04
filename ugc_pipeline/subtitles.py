@@ -87,22 +87,32 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
     
     video_w, video_h = video_clip.size
 
-    # Safe zone: tiktok (9:16) or uac (16:9)
-    margin_left, margin_right, safe_width = 0, 0, video_w
+    # Safe zone: tiktok (9:16) or uac (16:9) — scale all margins by resolution
+    margin_left, margin_right = 0, 0
+    margin_top = 0
+    safe_width = video_w
     tiktok = style_config.get("tiktok_safe_margins", {})
     uac = style_config.get("uac_16x9_margins", {})
     is_vertical = video_h > video_w
     if is_vertical and tiktok:
         ref_w = tiktok.get("ref_width", 540)
+        ref_h = tiktok.get("ref_height", 960)
         sx = video_w / ref_w
-        margin_left = int(tiktok.get("left", 0) * sx)
-        margin_right = int(tiktok.get("right", 0) * sx)
+        sy = video_h / ref_h
+        margin_left = int(tiktok.get("left", 60) * sx)
+        margin_right = int(tiktok.get("right", 120) * sx)
+        margin_bottom = int(tiktok.get("bottom", 54) * sy)
+        margin_top = int(tiktok.get("top", 126) * sy)
         safe_width = video_w - margin_left - margin_right
     elif not is_vertical and uac:
         ref_w = uac.get("ref_width", 1920)
+        ref_h = uac.get("ref_height", 1080)
         sx = video_w / ref_w
-        margin_left = int(uac.get("left", 0) * sx)
-        margin_right = int(uac.get("right", 0) * sx)
+        sy = video_h / ref_h
+        margin_left = int(uac.get("left", 105) * sx)
+        margin_right = int(uac.get("right", 516) * sx)
+        margin_bottom = int(uac.get("bottom", 504) * sy)
+        margin_top = int(uac.get("top", 40) * sy)
         safe_width = video_w - margin_left - margin_right
 
     # SUPERSAMPLING FACTOR (3x for high quality antialiasing)
