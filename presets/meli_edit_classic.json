@@ -10,8 +10,8 @@
     {"position": 1, "type": "introcard", "description": "Introcard overlay on Scene 1 (plays at t=0)"},
     {"position": 2, "type": "scene", "description": "Opening scene with talent"},
     {"position": 3, "type": "scene", "description": "Middle scene with talent"},
-    {"position": 4, "type": "broll", "description": "B-roll footage (product/feature demo)"},
-    {"position": 5, "type": "scene", "description": "Closing scene with talent"},
+    {"position": 4, "type": "scene", "description": "Closing scene with talent"},
+    {"position": 5, "type": "broll", "description": "B-roll footage (product/feature demo)"},
     {"position": 6, "type": "endcard", "description": "Brand endcard overlay (0.5s overlap)"}
   ],
   
@@ -25,13 +25,20 @@
     
     "highlight": {
       "color": "#333333",
+      "text_color": "#333333",
       "stroke_color": "#333333",
       "stroke_width": 4
     },
     
     "endcard": {
       "enabled": true,
-      "overlap_seconds": 0.5
+      "overlap_seconds": 0.5,
+      "audio_fade_seconds": 0.1
+    },
+    "broll_alpha_fill": {
+      "enabled": true,
+      "invert_alpha": false,
+      "auto_invert_alpha": false
     },
     "endcard_alpha_fill": {
       "enabled": false,
@@ -39,7 +46,9 @@
     },
     "introcard_alpha_fill": {
       "enabled": true,
-      "use_blur_background": false
+      "use_blur_background": false,
+      "invert_alpha": false,
+      "auto_invert_alpha": false
     },
     
     "interpolation": {
@@ -84,7 +93,7 @@
   
   "audio": {
     "music_url": "random",
-    "music_volume": 0.3,
+    "music_volume": 0.03,
     "voice_preserved": true,
     "output_codec": "aac",
     "output_bitrate": "320k"
@@ -123,7 +132,13 @@
         "endcard": {
           "enabled": true,
           "overlap_seconds": 0.5,
+          "audio_fade_seconds": 0.1,
           "url": "https://drive.google.com/..."
+        },
+        "broll_alpha_fill": {
+          "enabled": true,
+          "invert_alpha": false,
+          "auto_invert_alpha": false
         },
         "endcard_alpha_fill": {
           "enabled": false,

@@ -108,6 +108,13 @@ def build_payload(
     
     case = config['cases'][case_id]
     base_style = config['base_style'].copy()
+    # Merge case-level style_overrides (e.g. latam_edit highlight #4257E8)
+    case_style = case.get("style_overrides") or {}
+    for k, v in case_style.items():
+        if isinstance(v, dict) and k in base_style and isinstance(base_style[k], dict):
+            base_style[k] = {**base_style[k], **v}
+        else:
+            base_style[k] = v
     introcard_url = case.get("introcard_url") or config.get("introcard_url")
     
     # Set endcard URL (case default, override if provided)

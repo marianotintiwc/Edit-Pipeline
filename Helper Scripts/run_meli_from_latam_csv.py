@@ -150,24 +150,33 @@ def build_payload(row: Dict[str, str]) -> Dict[str, Any]:
     is_16x9 = aspect_ratio.strip().replace(":", "x").lower() in ("16x9", "16:9")
     resolution = [1920, 1080] if is_16x9 else [1080, 1920]
 
+    # LATAM config: fontsize 64, export quality master (see config/latam_edit_config.json)
     style_overrides = {
         "broll_alpha_fill": dict(LATAM_BROLL_ALPHA),
         "endcard_alpha_fill": dict(LATAM_ENDCARD_ALPHA),
         "color": "white",
         "stroke_color": "black",
         "stroke_width": 8,
+        "fontsize": 64,
         "highlight": {"enabled": True, "bg_color": "#1b0088"},
         "endcard": {"enabled": True, "overlap_seconds": ENDCARD_OVERLAP, "audio_fade_seconds": 0.1},
         "resolution": resolution,
+        "postprocess": {
+            "output": {
+                "profile": "master",
+                "crf": 18,
+                "preset": "slow",
+            },
+        },
     }
     # Safe zones: TikTok (9:16) and UAC 16:9 - margin_bottom keeps subtitles in safe area
     if is_16x9:
-        style_overrides["margin_bottom"] = 504  # UAC 16:9 @ 1920x1080
+        style_overrides["margin_bottom"] = 378  # UAC 16:9 @ 1920x1080 (25% closer to bottom)
         style_overrides["uac_16x9_margins"] = {
             "ref_width": 1920,
             "ref_height": 1080,
             "top": 40,
-            "bottom": 504,
+            "bottom": 378,
             "left": 105,
             "right": 516,
         }
@@ -240,7 +249,7 @@ def main() -> None:
     except OSError:
         pass
 
-    log("LATAM Edit - Text: white+black outline, highlight: #1b0088, safe zones, endcard 0.75s")
+    log("LATAM Edit - fontsize 64, master quality, white+black outline, highlight: #1b0088, safe zones, endcard 0.75s")
     log(f"Using endpoint {endpoint_id}")
     log(f"CSV: {csv_path}")
     log(f"Output folder: {OUTPUT_FOLDER}")

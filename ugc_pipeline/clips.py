@@ -25,7 +25,7 @@ def _get_target_resolution(style_config: Dict[str, Any] = None) -> tuple:
         if w > 0 and h > 0:
             return (w, h)
     return TARGET_RESOLUTION
-TRANSITION_AUDIO_FADE = 0.05  # seconds
+TRANSITION_AUDIO_FADE = 0.12  # seconds (increased from 0.05 to reduce glitch between clips)
 ENDCARD_AUDIO_FADE_MAX = 0.5  # seconds
 ENDCARD_AUDIO_FADE_DEFAULT = 0.1  # seconds
 

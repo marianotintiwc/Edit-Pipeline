@@ -1,5 +1,14 @@
 # MELI Local Edit Configuration Notes
 
+## 🔵 LATAM Edit (run_meli_from_latam_csv.py)
+
+- **Fontsize:** 64  
+- **Output quality:** master (profile `master`, CRF 18, preset slow; NVENC CQ 15)  
+- **Config reference:** `config/latam_edit_config.json`  
+- Text: white + black outline, highlight `#1b0088`, safe zones (TikTok / UAC 16:9), endcard overlap 0.75s  
+
+---
+
 ## 🟡 MELI EDIT CLASSIC
 
 The standard preset for all MercadoLibre UGC videos. Configuration saved in `presets/meli_edit_classic.json`.
@@ -10,8 +19,8 @@ The standard preset for all MercadoLibre UGC videos. Configuration saved in `pre
 Position 1: Introcard → Branded frame (MARCO_MELI.mov)
 Position 2: Scene 1   → Talent intro/hook
 Position 3: Scene 2   → Talent explanation  
-Position 4: B-Roll    → Product/feature demo
-Position 5: Scene 3   → Talent CTA/closing
+Position 4: Scene 3   → Talent CTA/closing
+Position 5: B-Roll    → Product/feature demo
 Position 6: Endcard   → Brand overlay (0.5s overlap)
 ```
 
@@ -198,6 +207,56 @@ Conclusión práctica:
 
 ## Cache
 - MELI cache directory: assets/meli_cache
+
+---
+
+## ✅ MLB Latest Config (Presigned + Pix No Crédito Alpha)
+
+### Output Folder
+`s3://meli-ai.filmmaker/MP-Users/Outputs 02-2026/`
+
+### URL Handling
+- All S3 inputs are sent as **presigned URLs** (RunPod can fetch even if objects are private).
+- Paths are normalized to **NFD** (macOS-style) before signing.
+- For MP-Users assets, `+` in filenames is treated as a space.
+
+### Clip Order
+`scene_1 → scene_2 → broll → scene_3 → endcard`
+
+### Style Overrides (MLB)
+- `font`: `/app/assets/fonts/MELIPROXIMANOVAA-BOLD.OTF`
+- `fontsize`: `60`
+- `stroke_color`: `#333333`
+- `stroke_width`: `10`
+- `highlight`: `{ color: #333333, stroke_color: #333333, stroke_width: 4 }`
+- `endcard`: `{ enabled: true, overlap_seconds: 0.5, url: <endcard_url> }`
+- `postprocess.color_grading.enabled`: `false`
+- `transcription.model`: `large`
+
+### B-roll Alpha (Only `pix_no_credito` / `PAGO-QR-MLB.mov`)
+```json
+"alpha_fill": {
+  "enabled": true,
+  "use_blur_background": true,
+  "invert_alpha": false,
+  "auto_invert_alpha": false,
+  "force_chroma_key": true,
+  "chroma_key_color": "0x000000",
+  "chroma_key_similarity": 0.20,
+  "chroma_key_blend": 0.15,
+  "edge_feather": 2,
+  "alpha_levels": {
+    "enabled": true,
+    "black": 0.12,
+    "white": 0.92,
+    "gamma": 1.0
+  }
+}
+```
+
+### Monitoring
+- MLB batch submits and **polls status** until completion.
+- Logs are written per run: `mlb_meli_from_csv_YYYYMMDD_HHMMSS.log`.
 - Clear cache to force re-download of updated B-rolls
 
 ---
