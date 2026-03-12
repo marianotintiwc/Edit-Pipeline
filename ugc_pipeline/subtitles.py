@@ -1,5 +1,5 @@
 import pysrt
-from moviepy.editor import TextClip, CompositeVideoClip, VideoFileClip, ImageClip
+from moviepy.editor import TextClip, CompositeVideoClip, VideoFileClip, ImageClip, ColorClip
 from typing import Dict, Any, List, Tuple, Optional
 from PIL import Image, ImageFilter
 import numpy as np
@@ -629,6 +629,13 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
 
         # Standard rendering (fallback) - center within safe zone
         std_pos_x = margin_left
+        # When highlight enabled (e.g. MELI): use highlight colors and draw yellow bg behind phrase
+        fill_color_std = color
+        stroke_color_std = stroke_color
+        if highlight_enabled:
+            hl = style_config.get("highlight", {})
+            fill_color_std = hl.get("text_color", color)
+            stroke_color_std = hl.get("stroke_color", stroke_color)
         if shadow_enabled:
              s_clip = TextClip(
                 text,
@@ -704,8 +711,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             text,
             font,
             fs_render,
-            color,
-            stroke_color,
+            fill_color_std,
+            stroke_color_std,
             sw_render,
             'transparent',
             'caption',
@@ -714,6 +721,22 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         )
         # Downsample
         txt_clip = txt_clip.resize(1.0/SS)
+        # When highlight enabled: draw yellow background behind phrase (phrase-level, no karaoke)
+        if highlight_enabled:
+            pad_w, pad_h = 20, 10
+            txt_w = getattr(txt_clip, "w", None)
+            txt_h = getattr(txt_clip, "h", None)
+            if txt_w is not None and txt_h is not None:
+                bg_color_hex = style_config.get("highlight", {}).get("bg_color", "#FFE600")
+                bg_w = max(1, int(txt_w) + pad_w)
+                bg_h = max(1, int(txt_h) + pad_h)
+                try:
+                    bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex), duration=duration)
+                except TypeError:
+                    bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex))
+                    bg_clip = bg_clip.set_duration(duration)
+                bg_clip = bg_clip.set_start(start_time).set_position((std_pos_x - pad_w // 2, pos_y - pad_h // 2))
+                subtitle_clips.append(bg_clip)
         txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((std_pos_x, pos_y))
         
         # Animation

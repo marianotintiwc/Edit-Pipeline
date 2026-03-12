@@ -11,7 +11,9 @@
     "stroke_color": "#333333",
     "stroke_width": 10,
     "highlight": {
+      "enabled": true,
       "color": "#333333",
+      "bg_color": "#FFE600",
       "text_color": "#333333",
       "stroke_color": "#333333",
       "stroke_width": 4
@@ -39,7 +41,7 @@
       },
       "color_grading": {"enabled": false}
     },
-    "transcription": {"model": "large"}
+    "transcription": {"model": "large", "word_level": false}
   },
   
   "cases": {
