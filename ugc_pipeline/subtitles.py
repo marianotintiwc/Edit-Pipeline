@@ -473,8 +473,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                     pad_h = 10
                     act_w, act_h = active_text_clip.size
                     
-                    # 1. Background Box
-                    from moviepy.editor import ColorClip
+                    # 1. Background Box (ColorClip from top-level import)
                     bg_clip = ColorClip(size=(act_w + pad_w, act_h + pad_h), color=hex_to_rgb(bg_color_hex))
                     bg_clip = bg_clip.set_opacity(1.0) # Ensure opaque
                     
