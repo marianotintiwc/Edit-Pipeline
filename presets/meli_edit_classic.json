@@ -27,12 +27,15 @@
       "enabled": true,
       "color": "#333333",
       "bg_color": "#FFE600",
-      "text_color": "#333333",
+      "text_color": "#000000",
       "stroke_color": "#333333",
       "stroke_width": 4,
-      "max_chars_per_line": 30
+      "max_chars_per_line": 30,
+      "box_roundness": 10
     },
-    
+    "animation": {
+      "enabled": false
+    },
     "endcard": {
       "enabled": true,
       "overlap_seconds": 0.5,

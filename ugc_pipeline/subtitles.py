@@ -1,8 +1,28 @@
 import pysrt
 from moviepy.editor import TextClip, CompositeVideoClip, VideoFileClip, ImageClip, ColorClip
 from typing import Dict, Any, List, Tuple, Optional
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageDraw
 import numpy as np
+
+
+def create_rounded_box_clip(
+    width: int,
+    height: int,
+    color_rgb: Tuple[int, int, int],
+    radius: int,
+    duration: float,
+):
+    """Create a rounded-rectangle background clip using PIL."""
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle(
+        [0, 0, width - 1, height - 1], radius=radius, fill=color_rgb + (255,)
+    )
+    arr = np.array(img)
+    clip = ImageClip(arr).set_duration(duration)
+    clip = clip.set_opacity(1.0)
+    return clip
+
 
 def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
     hex_color = hex_color.lstrip('#')
@@ -495,10 +515,18 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                     pad_w = 20
                     pad_h = 10
                     act_w, act_h = active_text_clip.size
-                    
-                    # 1. Background Box (ColorClip from top-level import)
-                    bg_clip = ColorClip(size=(act_w + pad_w, act_h + pad_h), color=hex_to_rgb(bg_color_hex))
-                    bg_clip = bg_clip.set_opacity(1.0) # Ensure opaque
+                    box_w = act_w + pad_w
+                    box_h = act_h + pad_h
+                    hl_karaoke = style_config.get("highlight", {})
+                    box_roundness_k = hl_karaoke.get("box_roundness", hl_karaoke.get("roundness", 0))
+                    if isinstance(box_roundness_k, (int, float)) and box_roundness_k > 0:
+                        radius_k = min(int(box_roundness_k), min(box_w, box_h) // 2)
+                        bg_clip = create_rounded_box_clip(
+                            box_w, box_h, hex_to_rgb(bg_color_hex), radius_k, duration
+                        )
+                    else:
+                        bg_clip = ColorClip(size=(box_w, box_h), color=hex_to_rgb(bg_color_hex))
+                        bg_clip = bg_clip.set_opacity(1.0)
                     
                     # Center text in box? 
                     # The box position:
@@ -794,11 +822,18 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 bg_color_hex = hl.get("bg_color", "#FFE600")
                 bg_w = max(1, int(txt_w) + pad_w)
                 bg_h = max(1, int(txt_h) + pad_h)
-                try:
-                    bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex), duration=duration)
-                except TypeError:
-                    bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex))
-                    bg_clip = bg_clip.set_duration(duration)
+                box_roundness = hl.get("box_roundness", hl.get("roundness", 0))
+                if isinstance(box_roundness, (int, float)) and box_roundness > 0:
+                    radius = min(int(box_roundness), min(bg_w, bg_h) // 2)
+                    bg_clip = create_rounded_box_clip(
+                        bg_w, bg_h, hex_to_rgb(bg_color_hex), radius, duration
+                    )
+                else:
+                    try:
+                        bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex), duration=duration)
+                    except TypeError:
+                        bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex))
+                        bg_clip = bg_clip.set_duration(duration)
                 box_pos_x = text_pos_x - pad_w // 2
                 bg_clip = bg_clip.set_start(start_time).set_position((box_pos_x, pos_y - pad_h // 2))
                 subtitle_clips.append(bg_clip)
