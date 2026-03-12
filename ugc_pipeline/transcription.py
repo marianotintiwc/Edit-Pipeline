@@ -54,6 +54,44 @@ def fix_tap_terminology(text: str) -> str:
     return text
 
 
+def _split_segment_by_max_chars(
+    segment: dict, max_chars: int
+) -> list:
+    """Split a segment into smaller segments when text exceeds max_chars (break at word boundaries)."""
+    text = (segment.get("text") or "").strip()
+    start = segment.get("start", 0.0)
+    end = segment.get("end", 0.0)
+    if max_chars <= 0 or len(text) <= max_chars:
+        return [segment]
+    words = text.split()
+    chunks: list = []
+    current: list = []
+    current_len = 0
+    for w in words:
+        need = len(w) + (1 if current else 0)
+        if current_len + need <= max_chars or not current:
+            current.append(w)
+            current_len += need
+        else:
+            chunks.append(" ".join(current))
+            current = [w]
+            current_len = len(w)
+    if current:
+        chunks.append(" ".join(current))
+    if len(chunks) <= 1:
+        return [segment]
+    total_chars = sum(len(c) for c in chunks)
+    duration = end - start
+    out: list = []
+    t = start
+    for i, c in enumerate(chunks):
+        # Proportional time by character count
+        seg_end = start + duration * (sum(len(chunks[j]) for j in range(i + 1)) / total_chars)
+        out.append({"start": t, "end": seg_end, "text": c})
+        t = seg_end
+    return out
+
+
 def transcribe_audio_array(
     audio_array: np.ndarray, 
     output_srt_path: str, 
@@ -64,6 +102,7 @@ def transcribe_audio_array(
     word_level: bool = False,
     max_words: int = 1,
     silence_threshold: float = 0.5,
+    max_chars_per_phrase: Optional[int] = None,
     log_func: Optional[Callable[[str], None]] = None
 ):
     """
@@ -206,6 +245,13 @@ def transcribe_audio_array(
                 final_segments.append(seg)
     else:
         final_segments = result.get("segments", [])
+        # Optionally split long phrases when not using word-level (max_chars_per_phrase)
+        if max_chars_per_phrase and max_chars_per_phrase > 0:
+            split_segments: list = []
+            for seg in final_segments:
+                split_segments.extend(_split_segment_by_max_chars(seg, max_chars_per_phrase))
+            final_segments = split_segments
+            _log(f"Split long phrases (max_chars_per_phrase={max_chars_per_phrase}); {len(final_segments)} segments.")
     
     _log(f"Writing {len(final_segments)} subtitles to {output_srt_path}...")
     with open(output_srt_path, "w", encoding="utf-8") as f:

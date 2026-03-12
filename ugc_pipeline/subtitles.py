@@ -8,6 +8,29 @@ def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
+
+def wrap_text_to_lines(text: str, max_chars_per_line: int) -> str:
+    """Wrap text into lines of at most max_chars_per_line characters (break at spaces)."""
+    if max_chars_per_line <= 0 or not text or not text.strip():
+        return text.strip() if text else ""
+    words = text.strip().split()
+    lines: List[str] = []
+    current: List[str] = []
+    current_len = 0
+    for w in words:
+        need = len(w) + (1 if current else 0)
+        if current_len + need <= max_chars_per_line or not current:
+            current.append(w)
+            current_len += need
+        else:
+            lines.append(" ".join(current))
+            current = [w]
+            current_len = len(w)
+    if current:
+        lines.append(" ".join(current))
+    return "\n".join(lines)
+
+
 def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: Dict[str, Any]) -> CompositeVideoClip:
     """
     Generates animated subtitles and overlays them on the video.
@@ -628,25 +651,45 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
 
         # Standard rendering (fallback) - center within safe zone
         std_pos_x = margin_left
-        # When highlight enabled (e.g. MELI): use highlight colors and draw yellow bg behind phrase
+        # When highlight enabled (e.g. MELI): use highlight colors and draw yellow bg behind phrase (cajita)
         fill_color_std = color
         stroke_color_std = stroke_color
+        hl = style_config.get("highlight", {}) if highlight_enabled else {}
         if highlight_enabled:
-            hl = style_config.get("highlight", {})
             fill_color_std = hl.get("text_color", color)
             stroke_color_std = hl.get("stroke_color", stroke_color)
+
+        # Text to render: wrapped when highlight (cajita) so box fits content
+        text_for_render = text
+        if highlight_enabled:
+            max_chars = hl.get("max_chars_per_line", 30)
+            text_for_render = wrap_text_to_lines(text, max_chars)
+
         if shadow_enabled:
-             s_clip = TextClip(
-                text,
-                font=font,
-                fontsize=fs_render,
-                color=shadow_color,
-                stroke_color=None,
-                stroke_width=0,
-                method='caption',
-                size=(safe_width * SS, None),
-                align='center'
-             )
+             if highlight_enabled:
+                 # Content-sized shadow (same as txt_clip for cajita)
+                 s_clip = TextClip(
+                    text_for_render,
+                    font=font,
+                    fontsize=fs_render,
+                    color=shadow_color,
+                    stroke_color=None,
+                    stroke_width=0,
+                    method='label',
+                    bg_color='transparent'
+                 )
+             else:
+                 s_clip = TextClip(
+                    text,
+                    font=font,
+                    fontsize=fs_render,
+                    color=shadow_color,
+                    stroke_color=None,
+                    stroke_width=0,
+                    method='caption',
+                    size=(safe_width * SS, None),
+                    align='center'
+                 )
              
              if shadow_blur > 0:
                  # Blur with padding
@@ -701,32 +744,54 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
              effective_opacity = shadow_opacity
 
              s_clip = s_clip.set_opacity(effective_opacity)
-             s_pos_x = std_pos_x + shadow_offset + pos_x_offset
+             if highlight_enabled:
+                 center_x = margin_left + safe_width // 2
+                 text_pos_x_for_shadow = center_x - (s_clip.w // 2)
+                 s_pos_x = text_pos_x_for_shadow + shadow_offset + pos_x_offset
+             else:
+                 s_pos_x = std_pos_x + shadow_offset + pos_x_offset
              s_pos_y = pos_y + shadow_offset + pos_y_offset
              s_clip = s_clip.set_start(start_time).set_duration(duration).set_position((s_pos_x, s_pos_y))
              subtitle_clips.append(s_clip)
 
-        txt_clip = build_stroked_text_clip(
-            text,
-            font,
-            fs_render,
-            fill_color_std,
-            stroke_color_std,
-            sw_render,
-            'transparent',
-            'caption',
-            size=(safe_width * SS, None),
-            align='center'
-        )
+        if highlight_enabled:
+            # Cajita: content-sized text (method='label', no size)
+            txt_clip = build_stroked_text_clip(
+                text_for_render,
+                font,
+                fs_render,
+                fill_color_std,
+                stroke_color_std,
+                sw_render,
+                'transparent',
+                'label',
+                size=None,
+                align=None
+            )
+        else:
+            txt_clip = build_stroked_text_clip(
+                text,
+                font,
+                fs_render,
+                fill_color_std,
+                stroke_color_std,
+                sw_render,
+                'transparent',
+                'caption',
+                size=(safe_width * SS, None),
+                align='center'
+            )
         # Downsample
         txt_clip = txt_clip.resize(1.0/SS)
-        # When highlight enabled: draw yellow background behind phrase (phrase-level, no karaoke)
+        # When highlight enabled: draw yellow background behind phrase (cajita - content-sized box)
         if highlight_enabled:
             pad_w, pad_h = 20, 10
             txt_w = getattr(txt_clip, "w", None)
             txt_h = getattr(txt_clip, "h", None)
+            center_x = margin_left + safe_width // 2
+            text_pos_x = center_x - (int(txt_w) // 2) if txt_w is not None else std_pos_x
             if txt_w is not None and txt_h is not None:
-                bg_color_hex = style_config.get("highlight", {}).get("bg_color", "#FFE600")
+                bg_color_hex = hl.get("bg_color", "#FFE600")
                 bg_w = max(1, int(txt_w) + pad_w)
                 bg_h = max(1, int(txt_h) + pad_h)
                 try:
@@ -734,9 +799,12 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                 except TypeError:
                     bg_clip = ColorClip(size=(bg_w, bg_h), color=hex_to_rgb(bg_color_hex))
                     bg_clip = bg_clip.set_duration(duration)
-                bg_clip = bg_clip.set_start(start_time).set_position((std_pos_x - pad_w // 2, pos_y - pad_h // 2))
+                box_pos_x = text_pos_x - pad_w // 2
+                bg_clip = bg_clip.set_start(start_time).set_position((box_pos_x, pos_y - pad_h // 2))
                 subtitle_clips.append(bg_clip)
-        txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((std_pos_x, pos_y))
+            txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((text_pos_x, pos_y))
+        else:
+            txt_clip = txt_clip.set_start(start_time).set_duration(duration).set_position((std_pos_x, pos_y))
         
         # Animation
         if anim_enabled and anim_type == 'pop_in':

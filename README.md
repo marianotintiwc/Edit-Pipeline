@@ -4,6 +4,8 @@ A video editing automation pipeline for UGC-style content (9:16 vertical format)
 
 Note: After a RunPod rollback, manual redeploy or a fresh commit may be required to resume builds.
 
+**Releases:** See [GitHub Releases](https://github.com/marianotintiwc/Edit-Pipeline/releases) for version history. RunPod builds from tags (e.g. `v1.33`). After pushing a new tag, update the endpoint image or trigger a rebuild so RunPod picks up the new version.
+
 ## Features
 - Concatenate video clips with smooth transitions
 - Add background music with loop and volume control
@@ -83,6 +85,37 @@ Config structure (16:9 reference 1920×1080):
   }
 }
 ```
+
+#### Subtitle Box (Cajita Aesthetic) and Phrase Length
+
+When `highlight.enabled` is true (MELI/LATAM style), subtitles use a **content-sized box** (“cajita”) per phrase instead of a full-width bar:
+
+- **Background:** The yellow (or `bg_color`) box wraps only the phrase, centered in the safe zone.
+- **Wrap:** Long phrases wrap to multiple lines via `highlight.max_chars_per_line` (default: 30). Set in `style_overrides.highlight`.
+- **Shorter phrases:** With `word_level: false`, segments can be split by `transcription.max_chars_per_phrase` (e.g. 45) in presets or `style_overrides.transcription`. Long Whisper segments are split at word boundaries with time distributed proportionally.
+
+Config example:
+
+```json
+"highlight": {
+  "enabled": true,
+  "bg_color": "#FFE600",
+  "text_color": "#333333",
+  "stroke_color": "#333333",
+  "stroke_width": 4,
+  "max_chars_per_line": 30
+},
+"transcription": {
+  "model": "large",
+  "word_level": false,
+  "max_chars_per_phrase": 45
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `highlight.max_chars_per_line` | 30 | Max characters per line before wrap (content-sized box) |
+| `transcription.max_chars_per_phrase` | — | Optional; split long segments when `word_level` is false |
 
 ### S3 Assets (Presigned + Normalization)
 

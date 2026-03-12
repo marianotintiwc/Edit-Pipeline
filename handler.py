@@ -1144,6 +1144,7 @@ def run_pipeline(
                             word_level=transcription_config.get("word_level", True),
                             max_words=transcription_config.get("max_words_per_segment", 4),
                             silence_threshold=transcription_config.get("max_delay_seconds", 0.5),
+                            max_chars_per_phrase=transcription_config.get("max_chars_per_phrase"),
                             log_func=ctx.log
                         )
                         ctx.log("Subtitles generated successfully")

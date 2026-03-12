@@ -254,6 +254,7 @@ def main():
     word_level = transcription_config.get("word_level", False)
     max_words = transcription_config.get("max_words_per_segment", 1)
     max_delay = transcription_config.get("max_delay_seconds", 0.5)
+    max_chars_per_phrase = transcription_config.get("max_chars_per_phrase")
 
     def infer_tap_from_clips_config(path: str) -> bool:
         if not path or not os.path.isfile(path):
@@ -389,15 +390,16 @@ def main():
             
             print_status(f"Transcribing (model={model_name}, lang={transcription_language})...", "PROGRESS")
             transcribe_audio_array(
-                audio_array, 
-                auto_subs_path, 
-                model_name=model_name, 
-                language=transcription_language, 
+                audio_array,
+                auto_subs_path,
+                model_name=model_name,
+                language=transcription_language,
                 initial_prompt=initial_prompt,
                 is_tap_job=is_tap_job,
                 word_level=word_level,
                 max_words=max_words,
-                silence_threshold=max_delay
+                silence_threshold=max_delay,
+                max_chars_per_phrase=max_chars_per_phrase,
             )
             
             final_subtitles_path = auto_subs_path

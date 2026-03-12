@@ -29,7 +29,8 @@
       "bg_color": "#FFE600",
       "text_color": "#333333",
       "stroke_color": "#333333",
-      "stroke_width": 4
+      "stroke_width": 4,
+      "max_chars_per_line": 30
     },
     
     "endcard": {
@@ -71,7 +72,8 @@
     "transcription": {
       "model": "large",
       "language": "auto",
-      "word_level": false
+      "word_level": false,
+      "max_chars_per_phrase": 45
     }
   },
   

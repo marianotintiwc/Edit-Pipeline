@@ -16,7 +16,8 @@
       "bg_color": "#FFE600",
       "text_color": "#333333",
       "stroke_color": "#333333",
-      "stroke_width": 4
+      "stroke_width": 4,
+      "max_chars_per_line": 30
     },
     "audio": {
       "music_volume": 0.03,
@@ -41,7 +42,7 @@
       },
       "color_grading": {"enabled": false}
     },
-    "transcription": {"model": "large", "word_level": false}
+    "transcription": {"model": "large", "word_level": false, "max_chars_per_phrase": 45}
   },
   
   "cases": {

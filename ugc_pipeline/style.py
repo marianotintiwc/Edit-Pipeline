@@ -14,8 +14,8 @@ DEFAULT_STYLE = {
         "enabled": False,
         "color": "yellow",
         "fontsize_multiplier": 1.1,
-        "roundness": 1.5
-
+        "roundness": 1.5,
+        "max_chars_per_line": 30
     },
     "animation": {
         "enabled": False,
