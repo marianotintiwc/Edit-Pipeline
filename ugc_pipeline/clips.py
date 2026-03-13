@@ -1123,6 +1123,9 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                         label="broll image",
                         require_non_opaque=alpha_require_non_opaque
                     )
+            elif is_broll and broll_has_alpha:
+                clip = VideoFileClip(path, has_mask=True)
+                original_audio = clip.audio
             elif is_broll and alpha_force_key:
                 audio_source = VideoFileClip(path)
                 original_audio = audio_source.audio
@@ -1147,9 +1150,6 @@ def process_clips(source: str, style_config: Dict[str, Any] = None) -> VideoFile
                     edge_feather=alpha_edge_feather
                 )
                 clip = VideoFileClip(alpha_path, has_mask=True)
-            elif is_broll and broll_has_alpha:
-                clip = VideoFileClip(path, has_mask=True)
-                original_audio = clip.audio
             else:
                 clip = VideoFileClip(path)
                 original_audio = clip.audio
@@ -1944,7 +1944,10 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     else:
                         print_clip_status("No alpha detected and force_chroma_key=false → alpha fill skipped", 3)
 
-            if is_broll and alpha_force_key:
+            if is_broll and broll_has_alpha:
+                original_clip = VideoFileClip(video_path, has_mask=True)
+                original_audio = original_clip.audio
+            elif is_broll and alpha_force_key:
                 audio_source = VideoFileClip(video_path)
                 original_audio = audio_source.audio
                 similarity = alpha_key_similarity
@@ -1968,9 +1971,6 @@ def process_project_clips(project_dir: str, style_config: Dict[str, Any] = None)
                     edge_feather=alpha_edge_feather
                 )
                 original_clip = VideoFileClip(alpha_path, has_mask=True)
-            elif is_broll and broll_has_alpha:
-                original_clip = VideoFileClip(video_path, has_mask=True)
-                original_audio = original_clip.audio
             else:
                 original_clip = VideoFileClip(video_path)
                 original_audio = original_clip.audio

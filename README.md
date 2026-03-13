@@ -4,7 +4,7 @@ A video editing automation pipeline for UGC-style content (9:16 vertical format)
 
 Note: After a RunPod rollback, manual redeploy or a fresh commit may be required to resume builds.
 
-**Releases:** See [GitHub Releases](https://github.com/marianotintiwc/Edit-Pipeline/releases) for version history. RunPod builds from tags (e.g. `v1.33`). After pushing a new tag, update the endpoint image or trigger a rebuild so RunPod picks up the new version.
+**Releases:** See [GitHub Releases](https://github.com/marianotintiwc/Edit-Pipeline/releases) for version history. RunPod builds from tags (e.g. `v1.4`, `v1.33`). After pushing a new tag, update the endpoint image or trigger a rebuild so RunPod picks up the new version. **v1.4:** Endpoint auto-detects native alpha on b-roll (ffprobe); uses alpha + blurred background when present, chroma key only when no alpha.
 
 ## Features
 - Concatenate video clips with smooth transitions
