@@ -342,7 +342,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Remove clip" }));
 
     expect(screen.getByRole("button", { name: "Preview render plan" })).toBeDisabled();
-    expect(screen.getByText("No clips added yet.")).toBeInTheDocument();
+    expect(screen.getByText(/No clips added yet/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Batch" }));
 

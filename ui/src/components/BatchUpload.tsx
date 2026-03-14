@@ -208,9 +208,12 @@ export function BatchUpload({
       ) : null}
 
       {error ? (
-        <div className="status-banner status-banner--error">
-          <strong>Error</strong>
+        <div className="status-banner status-banner--error" role="alert">
+          <strong>Upload failed</strong>
           <p style={{ margin: 0 }}>{error}</p>
+          <p className="helper" style={{ marginTop: "var(--space-1)", marginBottom: 0 }}>
+            Check CSV format and size, then try again.
+          </p>
         </div>
       ) : null}
 

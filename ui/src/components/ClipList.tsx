@@ -45,7 +45,9 @@ export function ClipList({ clips, onAdd, onChange, clipTypes }: ClipListProps) {
   return (
     <section>
       <h2>Add clips and assets</h2>
-      {clips.length === 0 ? <p>No clips added yet.</p> : null}
+      {clips.length === 0 ? (
+        <p className="helper">No clips added yet. Add at least one clip with a URL to preview and launch.</p>
+      ) : null}
       {clips.map((clip, index) => (
         <fieldset key={`${index}-${clip.type}`}>
           <legend>Clip {index + 1}</legend>

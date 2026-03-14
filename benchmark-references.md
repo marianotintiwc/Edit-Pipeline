@@ -234,6 +234,74 @@ Best-in-class patterns for batch CSV upload, creative studio wizards, and dashbo
 
 ---
 
+---
+
+## 4. Node-and-Link UX for Creative Tools (2025–2026)
+
+### Runway Workflows
+
+**URL:** https://runwayml.com/workflows | https://help.runwayml.com/hc/en-us/articles/45763528999699
+
+**What it does:** Node-based workflows for video/image/audio AI generation and editing.
+
+**Key patterns:**
+- **Typed nodes:** Input (text/video/image), Media Model (Gen-4, Veo, inpainting), LLM (Claude, Gemini), Media Utility (extract frames, stitch, audio).
+- **Color-coded content types:** Green=Video, Yellow=Audio, Blue=Image, Orange=Text; connections limited by compatible types.
+- **Templates:** Featured Workflow Library (Storyboard Creator, Image Style Generator, Virtual Try On); copy-to-customize.
+- **Live preview:** Run single nodes for testing; Run All for full pipeline; optional node locking.
+- **UX:** Right-click or + to add nodes; batch edit (Shift+select + toolbar); swap nodes in-place.
+
+### ComfyUI App View vs Full Graph (hybrid for power users)
+
+**URL:** https://blog.comfy.org/p/from-workflow-to-app-introducing | https://comfy.org/workflows
+
+**Key patterns:**
+- **App Mode:** One-click switch from full graph to simple UI; graph hidden; only selected inputs/outputs visible.
+- **App Builder:** Choose which node inputs become app inputs and which outputs become app outputs.
+- **Same backend:** Same instance, queue, nodes; extensions available in both modes.
+- **Hybrid:** Creators build in graph; non-technical users run via App Mode.
+
+### React Flow / Xyflow
+
+**URL:** https://reactflow.dev | https://xyflow.com
+
+**Key patterns:**
+- **Custom nodes:** React components; `nodeTypes` map; arbitrary handles; forms/charts inside nodes.
+- **Minimap:** SVG overview; pannable/zoomable; `nodeColor` / `nodeStrokeColor` by type.
+- **Layout:** Dagre, ELK, d3-force; subflows, auto-layout (Pro).
+- **Pro:** Undo/redo, copy/paste, collaborative (yjs), helper lines/snapping.
+
+### n8n (Flow Editor for Automation)
+
+**URL:** https://n8n.io | https://docs.n8n.io
+
+**Key patterns:**
+- **Inline feedback:** Outputs next to node settings; autocomplete for mappings.
+- **Execution:** Run single nodes; replay data; pin prior runs for debugging.
+- **AI nodes:** LangChain, multi-step agents; structured I/O.
+
+### Edit-Pipeline capability → candidate node types (from VIDEO_EDITOR_FEATURES_AND_UI_GAP_ANALYSIS)
+
+| Backend capability | Current UI | Candidate node type |
+|--------------------|------------|----------------------|
+| clips[] | Clip list form | Input: Clips node |
+| music_url, music_volume, loop_music | Form fields | Input: Music node |
+| geo | Selector | Input: Geo node |
+| style_overrides | Raw JSON only | Processing: Style node (guided controls) |
+| alpha_fill, broll_alpha_fill, endcard_alpha_fill | Raw JSON only | Processing: Alpha node |
+| postprocess (color grading, grain, vignette) | Preset/JSON | Processing: Postprocess node |
+| subtitle_mode, transcription | Form fields | Processing: Subtitles node |
+| plan_only, request_text | Form fields | Processing: Plan node |
+| render / output | Submit | Output: Render node |
+
+### Hybrid "Simple mode" vs "Graph mode" strategy
+
+- **Simple mode:** Current forms (Brief → Style → Review); fastest path for common flows.
+- **Graph mode:** Node canvas for power users; Input nodes → Processing nodes → Output node.
+- **Toggle:** One-click switch (ComfyUI App View pattern); graph serializes to same API payload.
+
+---
+
 ## Quick Reference Links
 
 | Product | Primary URL | Use Case |
@@ -246,3 +314,7 @@ Best-in-class patterns for batch CSV upload, creative studio wizards, and dashbo
 | Adobe Express | experienceleague.adobe.com | Text-to-template, wizard UX |
 | Linear | linear.app | Projects home, dashboards |
 | Vercel | vercel.com/docs | Project dashboard, deployment status |
+| Runway Workflows | runwayml.com/workflows | Node-based creative workflows |
+| ComfyUI | comfy.org | Hybrid app view + full graph |
+| React Flow | reactflow.dev | Node editor library |
+| n8n | n8n.io | Flow automation patterns |

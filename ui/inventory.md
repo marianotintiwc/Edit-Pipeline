@@ -88,3 +88,23 @@ App
 - **Batch preview:** Split layout visible; left: UploadZone + Load batch; right: "Upload a CSV or load a batch..." empty state.
 - **Studio style:** JobForm with geo, preset, aspect ratio, music, advanced settings; right panel "No plan preview yet".
 - **Batch step nav:** All 5 steps (import, mapping, validation, recipe, preview) render; mapping/validation/recipe show same BatchUpload as import (no distinct step content).
+
+---
+
+## Canvas Flow comparison (for node-and-link UX research)
+
+| Edit-Pipeline | Canvas Flow | Notes |
+|---------------|-------------|-------|
+| Home | HomePage | Both: workspace hub, session snapshot. CF adds folders, project library, search, sort. |
+| Studio (Brief → Style → Review) | ToolShell + Sidebar modes | CF: iaCreation, multiSubject, edition, video, animatic, motionControl, cameraControl, library, trash. Edit-Pipeline: linear wizard. |
+| Batch (import → preview) | CanvasResizePage | CF: resize → translate → iterate (staged tabs). Edit-Pipeline: import → mapping → validation → recipe → preview. Both use split layout. |
+| Runs | — | CF has no direct equivalent; relies on project/history in workbench. |
+| Recipe/Preset selection | PresetCards / CF PromptInput | Both: choose template/brief; CF modes vs Edit-Pipeline preset cards. |
+
+### Transferable from Canvas Flow UI_PLAYBOOK
+
+- **Semantic tokens:** `--bg-primary`, `--text-primary`, `--accent-primary`, `--duration-*`, `--ease-*`
+- **Staged flow model:** Resize → Translate → Iterate maps to node graph mental model (each stage = composable node)
+- **Batch utility pattern:** Upload → format selection → generate → review/download
+- **Hub + workbench architecture:** Entry point (home) vs production workspace (studio/batch)
+- **Motion system:** fadeIn, fadeInZoom, scaleIn, skeleton shimmer, reduced-motion fallback

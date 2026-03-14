@@ -1,7 +1,9 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { getRun as getRunApi, listRuns as listRunsApi } from "../../api";
 import { JobStatus } from "../../components/JobStatus";
+import { Button, EmptyState } from "../../components/primitives";
 import type { RunDetail, RunListItem } from "../../types";
 
 interface MonitorWorkspaceProps {
@@ -69,16 +71,33 @@ export function MonitorWorkspace({ initialJobId, initialRunId }: MonitorWorkspac
     <section aria-labelledby="monitor-workspace-title">
       <h2 id="monitor-workspace-title">Monitor runs</h2>
       <p>Recent runs</p>
-      {loading ? <p>Loading recent runs...</p> : null}
-      {error ? <p>{error}</p> : null}
-      {runs.length === 0 && !loading ? <p>No runs are available yet.</p> : null}
+      {/* Researched Linear/Vercel 2026 → loading state with aria-busy for accessibility */}
+      {loading ? (
+        <p aria-busy="true" className="helper">
+          Loading recent runs…
+        </p>
+      ) : null}
+      {error ? <p className="helper">{error}</p> : null}
+      {runs.length === 0 && !loading ? (
+        <EmptyState
+          title="No runs yet"
+          description="Start a video project in Studio or submit a batch to see runs here."
+          action={
+            <Link to="/studio/brief">
+              <Button variant="secondary" style={{ marginTop: "var(--space-2)" }}>
+                Start in Studio
+              </Button>
+            </Link>
+          }
+        />
+      ) : null}
       {runs.map((run) => (
         <article key={run.run_id}>
           <p>{run.run_id}</p>
           <p>{run.status}</p>
-          <button type="button" onClick={() => void handleOpenRun(run.run_id)}>
+          <Button variant="secondary" onClick={() => void handleOpenRun(run.run_id)}>
             Open {run.run_id}
-          </button>
+          </Button>
         </article>
       ))}
 

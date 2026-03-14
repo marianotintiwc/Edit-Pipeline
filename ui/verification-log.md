@@ -1,29 +1,30 @@
-# Phase 7: Verification Log
+# Verification Log — Overnight Guardian Mode v2
 
-**Date:** 2025-03-14
+## Build
 
-## Happy path
-
-- **Home:** Loads, shows workspace hub, KPIs, session snapshot, empty states with action CTA
-- **Batch Preview:** Split layout; UploadZone with enhanced hint; StepRail shows completed/active states
-- **Studio Brief:** Section spacing, Button primitives, PresetCards
-- **Studio Review:** CTA hierarchy (Launch primary, Upload CSV ghost), loading skeleton during preview
-
-## Edge states
-
-- **Empty session:** EmptyState with "New video project" CTA in session snapshot
-- **No preview yet:** ReviewPanel shows blocking message, Refresh secondary, Launch primary
-- **Loading preview:** Skeleton shimmer + "Preparing your submission preview…" (aria-busy)
-- **Step rail:** Completed steps show checkmark; active step highlighted; aria-current="step"
+- **Command:** `npm run build` (ui/)
+- **Result:** Success
+- **Output:** tsc -b && vite build; 64 modules; dist built in ~877ms
 
 ## Tests
 
-- All 17 tests pass
-- Build succeeds (tsc + vite build)
-- No linter errors on edited files
+- **Command:** `npm test -- --run`
+- **Result:** 17/17 passed
+- **Files:** api.test.ts, JsonTextarea.test.tsx, JobStatus.test.tsx, BatchUpload.test.tsx, App.test.tsx
+- **Note:** App.test.tsx assertion updated for ClipList helper text change (getByText(/No clips added yet/))
+
+## Lint
+
+- **Note:** No `npm run lint` script in package.json; ESLint not configured for ui/
+- **ReadLints:** No linter errors reported for ui/src
 
 ## Regressions
 
-- None observed
-- ReviewPanel: preview?.warnings guarded with `(preview?.warnings ?? []).map`
-- ClipList: Button variants preserve existing behavior
+- None observed. Tier-1 changes are visual/microcopy only; no form behavior or business logic modified.
+
+## 2026 best-practice checks (post-changes)
+
+- **Empty states:** Runs and Batch results use EmptyState with CTA; MonitorWorkspace loading uses aria-busy
+- **Error UX:** ValidationErrors heading "Something went wrong"; Batch error banner with helper text
+- **Consistency:** MonitorWorkspace raw button replaced with Button
+- **Accessibility:** aria-busy on loading; role="alert" on error banner

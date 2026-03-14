@@ -1,8 +1,10 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 
 import type { BatchDetail } from "../../types";
 import { BatchPreview } from "../../components/BatchPreview";
 import { BatchUpload } from "../../components/BatchUpload";
+import { Button, EmptyState } from "../../components/primitives";
 
 interface BatchWorkspaceProps {
   activeStepId?: string;
@@ -24,7 +26,17 @@ export function BatchWorkspace({ activeStepId }: BatchWorkspaceProps) {
           {batch ? (
             <BatchPreview batch={batch} />
           ) : (
-            <p className="helper">Upload a CSV or load a batch to see preview and results here.</p>
+            <EmptyState
+              title="No batch loaded"
+              description="Upload a CSV or load an existing batch to see preview and results here."
+              action={
+                <Link to="/batch/import">
+                  <Button variant="secondary" style={{ marginTop: "var(--space-2)" }}>
+                    Go to import
+                  </Button>
+                </Link>
+              }
+            />
           )}
         </div>
       </div>

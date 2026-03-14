@@ -9,7 +9,8 @@ export function ValidationErrors({ errors }: ValidationErrorsProps) {
 
   return (
     <section aria-label="Validation errors">
-      <h2>Errors</h2>
+      {/* Researched Stripe/CSVBox 2026 → user-facing heading reduces anxiety vs generic "Errors" */}
+      <h2>Something went wrong</h2>
       <ul>
         {errors.map((error) => (
           <li key={error}>{error}</li>
