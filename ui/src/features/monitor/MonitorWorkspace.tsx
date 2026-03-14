@@ -9,9 +9,10 @@ import type { RunDetail, RunListItem } from "../../types";
 interface MonitorWorkspaceProps {
   initialJobId?: string;
   initialRunId?: string;
+  initialRecordId?: string;
 }
 
-export function MonitorWorkspace({ initialJobId, initialRunId }: MonitorWorkspaceProps) {
+export function MonitorWorkspace({ initialJobId, initialRunId, initialRecordId }: MonitorWorkspaceProps) {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [selectedRun, setSelectedRun] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,9 +96,17 @@ export function MonitorWorkspace({ initialJobId, initialRunId }: MonitorWorkspac
         <article key={run.run_id}>
           <p>{run.run_id}</p>
           <p>{run.status}</p>
-          <Button variant="secondary" onClick={() => void handleOpenRun(run.run_id)}>
-            Open {run.run_id}
-          </Button>
+          <div className="button-row">
+            <Button variant="secondary" onClick={() => void handleOpenRun(run.run_id)}>
+              Open {run.run_id}
+            </Button>
+            <Link to={`/runs/${run.run_id}`}>
+              <Button variant="ghost">Permalink</Button>
+            </Link>
+            <Link to={`/runs/${run.run_id}/records/${run.job_id}`}>
+              <Button variant="ghost">Record view</Button>
+            </Link>
+          </div>
         </article>
       ))}
 
@@ -105,6 +114,7 @@ export function MonitorWorkspace({ initialJobId, initialRunId }: MonitorWorkspac
         <section>
           <h3>Selected run</h3>
           <p>{selectedRun.run_id}</p>
+          {initialRecordId ? <p className="helper">Focused record: {initialRecordId}</p> : null}
           {selectedRun.output_url ? <p>{selectedRun.output_url}</p> : null}
           <JobStatus jobId={selectedRun.job_id ?? initialJobId ?? ""} />
         </section>

@@ -12,15 +12,24 @@ import { BatchPreview } from "./BatchPreview";
 import { BatchProgress } from "./BatchProgress";
 
 interface BatchUploadProps {
-  createBatch?: (file: File) => Promise<BatchDetail>;
+  createBatch?: (
+    file: File,
+    options?: { mapping?: Record<string, string>; recipeInput?: Record<string, unknown> | null },
+  ) => Promise<BatchDetail>;
   getBatch?: (batchId: string) => Promise<BatchDetail>;
   listBatches?: () => Promise<{ items: BatchListItem[] }>;
   pollIntervalMs?: number;
-  submitBatch?: (batchId: string) => Promise<BatchDetail>;
+  submitBatch?: (
+    batchId: string,
+    options?: { recipeInput?: Record<string, unknown> | null },
+  ) => Promise<BatchDetail>;
   /** When true, preview is rendered by parent (for split layout) */
   externalPreview?: boolean;
   /** Called when batch changes so parent can render preview */
   onBatchChange?: (batch: BatchDetail | null) => void;
+  mapping?: Record<string, string>;
+  recipeInput?: Record<string, unknown> | null;
+  onCsvHeadersChange?: (headers: string[]) => void;
 }
 
 export function BatchUpload({
@@ -31,22 +40,32 @@ export function BatchUpload({
   submitBatch = submitBatchApi,
   externalPreview = false,
   onBatchChange,
+  mapping,
+  recipeInput,
+  onCsvHeadersChange,
 }: BatchUploadProps) {
   const [batch, setBatch] = useState<BatchDetail | null>(null);
   const [batchId, setBatchId] = useState("");
   const [recentBatches, setRecentBatches] = useState<BatchListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingBatch, setIsLoadingBatch] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasPendingRows =
     batch?.rows.some((row) => ["ready", "failed"].includes(row.status) && row.input) ?? false;
 
   const loadRecentBatches = async () => {
+    setIsLoadingRecent(true);
     try {
       const response = await listBatches();
       setRecentBatches(response.items);
     } catch {
       setRecentBatches([]);
+    } finally {
+      setIsLoadingRecent(false);
     }
   };
 
@@ -79,20 +98,40 @@ export function BatchUpload({
     };
   }, [batch, pollIntervalMs]);
 
+  const detectCsvHeaders = async (file: File): Promise<string[]> => {
+    try {
+      const text = await file.text();
+      const [headerLine = ""] = text.split(/\r?\n/, 1);
+      return headerLine
+        .split(",")
+        .map((header) => header.trim().replace(/^"|"$/g, ""))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+
   const handleUpload = async (file: File | null) => {
     if (!file) {
       return;
     }
 
     setError(null);
+    setIsUploading(true);
     try {
-      const nextBatch = await createBatch(file);
+      const headers = await detectCsvHeaders(file);
+      if (headers.length > 0) {
+        onCsvHeadersChange?.(headers);
+      }
+      const nextBatch = await createBatch(file, { mapping, recipeInput });
       setBatch(nextBatch);
       onBatchChange?.(nextBatch);
       setBatchId(nextBatch.batch_id);
       await loadRecentBatches();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Failed to parse CSV batch");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -102,6 +141,7 @@ export function BatchUpload({
     }
 
     setError(null);
+    setIsLoadingBatch(true);
     try {
       const nextBatch = await getBatch(targetBatchId.trim());
       setBatch(nextBatch);
@@ -109,6 +149,8 @@ export function BatchUpload({
       setBatchId(nextBatch.batch_id);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load batch");
+    } finally {
+      setIsLoadingBatch(false);
     }
   };
 
@@ -118,13 +160,16 @@ export function BatchUpload({
     }
 
     setError(null);
+    setIsSubmitting(true);
     try {
-      const nextBatch = await submitBatch(batch.batch_id);
+      const nextBatch = await submitBatch(batch.batch_id, { recipeInput });
       setBatch(nextBatch);
       onBatchChange?.(nextBatch);
       await loadRecentBatches();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to submit batch");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -146,7 +191,7 @@ export function BatchUpload({
         }}
       >
         <UploadZone
-          text="Drop CSV or click to upload"
+          text={isUploading ? "Uploading CSV..." : "Drop CSV or click to upload"}
           hint=".csv only · Max 5MB recommended. Use template columns for correct format."
           dragging={dragging}
           onClick={() => fileInputRef.current?.click()}
@@ -172,11 +217,16 @@ export function BatchUpload({
             aria-label="Batch ID"
           />
           <Button variant="secondary" onClick={() => void handleLoadBatch(batchId)}>
-            Load batch
+            {isLoadingBatch ? "Loading..." : "Load batch"}
           </Button>
         </label>
       </div>
 
+      {isLoadingRecent ? (
+        <p className="helper" aria-busy="true">
+          Loading recent batches...
+        </p>
+      ) : null}
       {recentBatches.length > 0 ? (
         <div>
           <span className="section-header">Recent batches</span>
@@ -220,7 +270,9 @@ export function BatchUpload({
       {batch && renderPreviewInline ? <BatchPreview batch={batch} /> : null}
 
       {batch && hasPendingRows ? (
-        <Button onClick={() => void handleSubmit()}>Submit pending rows</Button>
+        <Button onClick={() => void handleSubmit()} disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Submit pending rows"}
+        </Button>
       ) : null}
 
       {batch && (batch.submitted_rows ?? 0) > 0 ? <BatchProgress batch={batch} /> : null}

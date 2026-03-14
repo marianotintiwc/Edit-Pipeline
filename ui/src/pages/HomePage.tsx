@@ -1,23 +1,35 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { listRuns } from "../api";
-import type { JobSubmitResponse, PresetListItem, RunListItem } from "../types";
+import type { JobInput, JobSubmitResponse, PresetListItem, RunListItem } from "../types";
+import { CURATED_RECIPES, type Recipe } from "../data/recipes";
 import { Badge, Button, EmptyState, SurfaceCard, ToolbarPill } from "../components/primitives";
+import { RecipeCards } from "../components/RecipeCards";
 
 interface HomePageProps {
   presets: PresetListItem[];
+  isPresetsLoading?: boolean;
   latestJobResult: JobSubmitResponse | null;
+  onApplyRecipe?: (input: Partial<JobInput>) => void;
 }
 
-export function HomePage({ presets, latestJobResult }: HomePageProps) {
+export function HomePage({
+  presets,
+  isPresetsLoading = false,
+  latestJobResult,
+  onApplyRecipe,
+}: HomePageProps) {
+  const navigate = useNavigate();
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isRunsLoading, setIsRunsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadRuns = async () => {
+      setIsRunsLoading(true);
       try {
         const response = await listRuns();
         if (!cancelled) {
@@ -27,6 +39,10 @@ export function HomePage({ presets, latestJobResult }: HomePageProps) {
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load run snapshot");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsRunsLoading(false);
         }
       }
     };
@@ -39,16 +55,23 @@ export function HomePage({ presets, latestJobResult }: HomePageProps) {
 
   const activeRuns = runs.filter((run) => !["COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"].includes(run.status));
 
+  const handleRecipeSelect = (recipe: Recipe) => {
+    if (onApplyRecipe) {
+      onApplyRecipe(recipe.input);
+    }
+    navigate("/studio/brief");
+  };
+
   return (
     <div className="shell-page">
       <section className="hero-grid">
         <SurfaceCard>
-          <span className="section-header">Workspace hub</span>
-          <h2>Start in Studio, keep Batch and Runs close</h2>
+          <span className="section-header">Creator workspace</span>
+          <h2>Build, style, scale, and ship videos</h2>
           <p className="helper">
-            The product is shifting from a flat operator console into a creative-first shell. Use
-            Studio for authoring and review, then drop into Batch or Runs only when the workflow
-            becomes operational.
+            Start from a recipe, fine-tune style controls, scale through batch, and monitor runs —
+            all from one workspace. The pipeline supports {CURATED_RECIPES.length} ready-to-use
+            recipes and 100+ configurable creative controls.
           </p>
           <div className="button-row">
             <Link to="/studio/brief">
@@ -98,42 +121,30 @@ export function HomePage({ presets, latestJobResult }: HomePageProps) {
         </SurfaceCard>
         <SurfaceCard compact>
           <p className="micro-label">Recipes available</p>
-          <p className="kpi-card__value">{presets.length}</p>
-          <p className="helper">Presets that can seed a Studio session today.</p>
+          <p className="kpi-card__value">{CURATED_RECIPES.length + presets.length}</p>
+          <p className="helper">Built-in recipes plus loaded presets.</p>
         </SurfaceCard>
         <SurfaceCard compact>
           <p className="micro-label">Needs review</p>
-          <p className="kpi-card__value">{runs.slice(0, 3).length}</p>
-          <p className="helper">Temporary proxy until record-level review queues are exposed.</p>
+          <p className="kpi-card__value">{runs.filter((r) => r.status === "COMPLETED").length}</p>
+          <p className="helper">Completed runs awaiting review.</p>
         </SurfaceCard>
       </section>
 
-      <section className="home-grid home-grid--cards">
-        <SurfaceCard>
-          <span className="section-header">Recent recipes</span>
-          <h3>Saved recipes</h3>
-          {presets.length ? (
-            <div className="surface-stack">
-              {presets.slice(0, 4).map((preset) => (
-                <div key={preset.name}>
-                  <ToolbarPill>{preset.label}</ToolbarPill>
-                  {preset.description ? <p>{preset.description}</p> : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="Recipes are loading"
-              description="The preset catalog will surface here so users enter by recipe instead of raw payload."
-            />
-          )}
-        </SurfaceCard>
+      {/* Creator Recipes */}
+      <RecipeCards onSelect={handleRecipeSelect} />
 
+      <section className="home-grid home-grid--cards">
         <SurfaceCard>
           <span className="section-header">Active runs rail</span>
           <h3>Production pulse</h3>
           {error ? <p>{error}</p> : null}
-          {runs.length ? (
+          {isRunsLoading ? (
+            <EmptyState
+              title="Loading runs"
+              description="Fetching the latest runs and statuses from the API."
+            />
+          ) : runs.length ? (
             <div className="surface-stack">
               {runs.slice(0, 4).map((run) => (
                 <div key={run.run_id}>
@@ -154,21 +165,28 @@ export function HomePage({ presets, latestJobResult }: HomePageProps) {
         </SurfaceCard>
 
         <SurfaceCard>
-          <span className="section-header">Recent projects</span>
-          <h3>Project system placeholder</h3>
-          <EmptyState
-            title="Project abstraction is next"
-            description="The shell is ready for Project -> Version -> Recipe -> Run, even though projects are not persisted yet."
-          />
-        </SurfaceCard>
-
-        <SurfaceCard>
-          <span className="section-header">Needs review queue</span>
-          <h3>Record review placeholder</h3>
-          <EmptyState
-            title="Review queue not exposed yet"
-            description="This card marks the intended surface for approve, reject, retry, and patch workflows once record-level APIs arrive."
-          />
+          <span className="section-header">Loaded presets</span>
+          <h3>Server presets</h3>
+          {isPresetsLoading ? (
+            <EmptyState
+              title="Loading presets"
+              description="Fetching preset catalog from the server."
+            />
+          ) : presets.length ? (
+            <div className="surface-stack">
+              {presets.slice(0, 4).map((preset) => (
+                <div key={preset.name}>
+                  <ToolbarPill>{preset.label}</ToolbarPill>
+                  {preset.description ? <p className="helper">{preset.description}</p> : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Loading presets"
+              description="Server presets will appear here once the API responds."
+            />
+          )}
         </SurfaceCard>
       </section>
     </div>

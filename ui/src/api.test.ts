@@ -380,11 +380,44 @@ describe("ui api client", () => {
       expect.objectContaining({
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipe_input: null }),
       }),
     );
     expect(createdBatch.batch_id).toBe("batch-1");
     expect(batches.items[0].batch_id).toBe("batch-1");
     expect(fetchedBatch.rows[0].status).toBe("ready");
     expect(submittedBatch.rows[0].run_id).toBe("run-1");
+  });
+
+  it("sends mapping and recipe defaults when creating a batch", async () => {
+    const csvFile = new File(["geo\nMLA\n"], "jobs.csv", { type: "text/csv" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          batch_id: "batch-2",
+          filename: "jobs.csv",
+          status: "ready",
+          total_rows: 1,
+          valid_rows: 1,
+          invalid_rows: 0,
+          rows: [{ row_number: 1, status: "ready", warnings: [], errors: [], input: { geo: "MLA" } }],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await createBatchFromCsv(csvFile, {
+      mapping: { geo: "geo" },
+      recipeInput: { subtitle_mode: "auto" },
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const formData = requestInit.body as FormData;
+    expect(formData.get("mapping")).toBe(JSON.stringify({ geo: "geo" }));
+    expect(formData.get("recipe_input")).toBe(JSON.stringify({ subtitle_mode: "auto" }));
   });
 });

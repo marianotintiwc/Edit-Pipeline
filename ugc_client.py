@@ -72,7 +72,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 import re
+import time
 import requests
+
+try:
+    from ugc_pipeline.request_schema import collect_payload_issues as _shared_collect_payload_issues
+except Exception:  # pragma: no cover - copied standalone usage
+    _shared_collect_payload_issues = None
 
 
 VALID_INPUT_KEYS = {
@@ -87,11 +93,18 @@ VALID_INPUT_KEYS = {
     "edit_preset",
     "enable_interpolation",
     "rife_model",
+    "input_fps",
     "style_overrides",
     "output_filename",
     "output_folder",
+    "output_bucket",
+    "aspect_ratio",
     "project_name",
-    "job_id"
+    "job_id",
+    "request_text",
+    "plan_only",
+    "storyboard",
+    "retrieval",
 }
 
 VALID_CLIP_KEYS = {
@@ -164,13 +177,56 @@ def _validate_alpha_fill_config(alpha_cfg: Dict[str, Any], prefix: str, errors: 
 
 
 class UGCPipelineClient:
-    def __init__(self, api_key: str, endpoint_id: str, base_url: Optional[str] = None, timeout: int = 600):
+    def __init__(
+        self,
+        api_key: str,
+        endpoint_id: str,
+        base_url: Optional[str] = None,
+        timeout: int = 120,
+        max_retries: int = 3,
+        retry_backoff_seconds: float = 1.0,
+    ):
         self.base_url = base_url or f"https://api.runpod.ai/v2/{endpoint_id}"
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
+
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        attempt = 0
+        while True:
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    json=json_payload,
+                    headers=self.headers,
+                    timeout=self.timeout,
+                )
+            except requests.RequestException as exc:
+                if attempt >= self.max_retries:
+                    raise
+                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt)
+                time.sleep(sleep_seconds)
+                attempt += 1
+                continue
+
+            # Retry transient upstream errors.
+            if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt)
+                time.sleep(sleep_seconds)
+                attempt += 1
+                continue
+            return response
 
     def build_payload(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         return {"input": input_data}
@@ -178,6 +234,12 @@ class UGCPipelineClient:
     def validate_payload(self, payload: Dict[str, Any], strict: bool = True) -> Tuple[List[str], List[str]]:
         warnings: List[str] = []
         errors: List[str] = []
+
+        if _shared_collect_payload_issues is not None:
+            warnings, errors = _shared_collect_payload_issues(payload.get("input") if isinstance(payload, dict) else payload)
+            if strict and errors:
+                raise ValueError("Payload validation failed: " + "; ".join(errors))
+            return warnings, errors
 
         if not isinstance(payload, dict) or "input" not in payload:
             errors.append("payload must be an object with an 'input' key")
@@ -210,8 +272,8 @@ class UGCPipelineClient:
                     if not clip.get("url") or not isinstance(clip.get("url"), str):
                         errors.append(f"clips[{idx}].url is required and must be a string")
                     clip_type = clip.get("type", "scene")
-                    if clip_type not in ("scene", "broll", "endcard"):
-                        errors.append(f"clips[{idx}].type must be 'scene', 'broll', or 'endcard'")
+                    if clip_type not in ("scene", "broll", "endcard", "introcard"):
+                        errors.append(f"clips[{idx}].type must be 'scene', 'broll', 'endcard', or 'introcard'")
                     for key in ("start_time", "end_time"):
                         if key in clip and clip[key] is not None and not _is_number(clip[key]):
                             errors.append(f"clips[{idx}].{key} must be a number or null")
@@ -236,6 +298,12 @@ class UGCPipelineClient:
         if "enable_interpolation" in input_data and input_data["enable_interpolation"] is not None and not isinstance(input_data["enable_interpolation"], bool):
             errors.append("enable_interpolation must be a boolean")
 
+        if "input_fps" in input_data and input_data["input_fps"] is not None:
+            if not _is_number(input_data["input_fps"]):
+                errors.append("input_fps must be a number")
+            elif input_data["input_fps"] <= 0:
+                errors.append("input_fps must be > 0")
+
         if "subtitle_mode" in input_data and input_data["subtitle_mode"] is not None:
             if input_data["subtitle_mode"] not in {"auto", "manual", "none"}:
                 errors.append("subtitle_mode must be 'auto', 'manual', or 'none'")
@@ -244,13 +312,23 @@ class UGCPipelineClient:
             if not isinstance(input_data["style_overrides"], dict):
                 errors.append("style_overrides must be an object")
             else:
-                for key in ("broll_alpha_fill", "endcard_alpha_fill"):
+                for key in ("broll_alpha_fill", "endcard_alpha_fill", "introcard_alpha_fill"):
                     if key in input_data["style_overrides"] and input_data["style_overrides"][key] is not None:
                         _validate_alpha_fill_config(
                             input_data["style_overrides"][key],
                             f"style_overrides.{key}",
                             errors
                         )
+
+        if "request_text" in input_data and input_data["request_text"] is not None and not isinstance(input_data["request_text"], str):
+            errors.append("request_text must be a string")
+
+        if "plan_only" in input_data and input_data["plan_only"] is not None and not isinstance(input_data["plan_only"], bool):
+            errors.append("plan_only must be a boolean")
+
+        for key in ("storyboard", "retrieval"):
+            if key in input_data and input_data[key] is not None and not isinstance(input_data[key], dict):
+                errors.append(f"{key} must be an object")
 
         if strict and errors:
             raise ValueError("Payload validation failed: " + "; ".join(errors))
@@ -259,32 +337,18 @@ class UGCPipelineClient:
 
     def submit_job_sync(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         self.validate_payload(payload, strict=True)
-        response = requests.post(
-            f"{self.base_url}/runsync",
-            json=payload,
-            headers=self.headers,
-            timeout=self.timeout
-        )
+        response = self._request_with_retry("POST", f"{self.base_url}/runsync", json_payload=payload)
         response.raise_for_status()
         return response.json()
 
     def submit_job_async(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         self.validate_payload(payload, strict=True)
-        response = requests.post(
-            f"{self.base_url}/run",
-            json=payload,
-            headers=self.headers,
-            timeout=self.timeout
-        )
+        response = self._request_with_retry("POST", f"{self.base_url}/run", json_payload=payload)
         response.raise_for_status()
         return response.json()
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
-        response = requests.get(
-            f"{self.base_url}/status/{job_id}",
-            headers=self.headers,
-            timeout=self.timeout
-        )
+        response = self._request_with_retry("GET", f"{self.base_url}/status/{job_id}")
         response.raise_for_status()
         return response.json()
 

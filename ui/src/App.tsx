@@ -52,7 +52,9 @@ function mergeFormWithDefaults(input: Partial<JobInput>): JobInput {
 function AppContent() {
   const navigate = useNavigate();
   const [configOptions, setConfigOptions] = useState<ConfigOptions | null>(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [presets, setPresets] = useState<PresetListItem[]>([]);
+  const [isPresetsLoading, setIsPresetsLoading] = useState(true);
   const [selectedPreset, setSelectedPreset] = useState<PresetDetail | null>(null);
   const [form, setForm] = useState<JobInput>(() => mergeFormWithDefaults(DEFAULT_FORM));
   const [errors, setErrors] = useState<string[]>([]);
@@ -62,13 +64,17 @@ function AppContent() {
   const [jobResult, setJobResult] = useState<JobSubmitResponse | null>(null);
 
   useEffect(() => {
+    setIsConfigLoading(true);
     void getConfigOptions()
       .then((response) => setConfigOptions(response))
-      .catch((error: Error) => setErrors((current) => [...current, error.message]));
+      .catch((error: Error) => setErrors((current) => [...current, error.message]))
+      .finally(() => setIsConfigLoading(false));
 
+    setIsPresetsLoading(true);
     void getPresets()
       .then((response) => setPresets(response.items))
-      .catch((error: Error) => setErrors((current) => [...current, error.message]));
+      .catch((error: Error) => setErrors((current) => [...current, error.message]))
+      .finally(() => setIsPresetsLoading(false));
   }, []);
 
   const updateForm = (patch: Partial<JobInput>) => {
@@ -156,6 +162,8 @@ function AppContent() {
     selectedPreset,
     form,
     configOptions,
+    isConfigLoading,
+    isPresetsLoading,
     canPreview,
     onPresetSelect: (presetName: string) => {
       void handlePresetSelection(presetName);
@@ -189,7 +197,18 @@ function AppContent() {
   return (
     <Shell alertSlot={alertSlot}>
       <Routes>
-        <Route path="/" element={<HomePage presets={presets} latestJobResult={jobResult} />} />
+        <Route path="/" element={
+          <HomePage
+            presets={presets}
+            isPresetsLoading={isPresetsLoading}
+            latestJobResult={jobResult}
+            onApplyRecipe={(input) => {
+              setForm(mergeFormWithDefaults(input));
+              setPreview(null);
+              setPreviewError(null);
+            }}
+          />
+        } />
         <Route
           path="/studio/brief"
           element={
@@ -240,11 +259,7 @@ function AppContent() {
         />
         <Route path="/studio" element={<Navigate to="/studio/brief" replace />} />
         <Route path="/batch" element={<Navigate to="/batch/import" replace />} />
-        <Route path="/batch/import" element={<BatchPage activeStepId="import" />} />
-        <Route path="/batch/mapping" element={<BatchPage activeStepId="mapping" />} />
-        <Route path="/batch/validation" element={<BatchPage activeStepId="validation" />} />
-        <Route path="/batch/recipe" element={<BatchPage activeStepId="recipe" />} />
-        <Route path="/batch/preview" element={<BatchPage activeStepId="preview" />} />
+        <Route path="/batch/:stepId" element={<BatchPage />} />
         <Route path="/runs" element={<RunsPage latestJobResult={jobResult} />} />
         <Route
           path="/runs/:runId"

@@ -17,13 +17,29 @@ function getApiUrl(path: string): string {
 }
 
 async function readJson<T>(response: Response): Promise<T> {
-  const data = (await response.json()) as T & { errors?: string[]; detail?: string };
+  const rawBody = await response.text();
+  let data = {} as T & { errors?: string[]; detail?: string; error_code?: string };
+  if (rawBody) {
+    try {
+      data = JSON.parse(rawBody) as T & { errors?: string[]; detail?: string; error_code?: string };
+    } catch (error) {
+      throw new Error(
+        response.ok
+          ? "Server returned malformed JSON"
+          : `Request failed with malformed JSON (${response.status})`,
+      );
+    }
+  }
+
   if (!response.ok) {
     if (Array.isArray(data.errors) && data.errors.length > 0) {
       throw new Error(data.errors.join(", "));
     }
     if (typeof data.detail === "string") {
       throw new Error(data.detail);
+    }
+    if (typeof data.error_code === "string") {
+      throw new Error(data.error_code);
     }
     throw new Error("Request failed");
   }
@@ -98,9 +114,18 @@ export async function getRun(runId: string): Promise<RunDetail> {
   return readJson<RunDetail>(response);
 }
 
-export async function createBatchFromCsv(file: File): Promise<BatchDetail> {
+export async function createBatchFromCsv(
+  file: File,
+  options?: { mapping?: Record<string, string>; recipeInput?: Record<string, unknown> | null },
+): Promise<BatchDetail> {
   const formData = new FormData();
   formData.append("file", file);
+  if (options?.mapping && Object.keys(options.mapping).length > 0) {
+    formData.append("mapping", JSON.stringify(options.mapping));
+  }
+  if (options?.recipeInput) {
+    formData.append("recipe_input", JSON.stringify(options.recipeInput));
+  }
   const response = await fetch(getApiUrl("/api/batches"), {
     method: "POST",
     credentials: "include",
@@ -123,10 +148,17 @@ export async function listBatches(): Promise<BatchListResponse> {
   return readJson<BatchListResponse>(response);
 }
 
-export async function submitBatch(batchId: string): Promise<BatchDetail> {
+export async function submitBatch(
+  batchId: string,
+  options?: { recipeInput?: Record<string, unknown> | null },
+): Promise<BatchDetail> {
   const response = await fetch(getApiUrl(`/api/batches/${batchId}/submit`), {
     method: "POST",
     credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ recipe_input: options?.recipeInput ?? null }),
   });
   return readJson<BatchDetail>(response);
 }

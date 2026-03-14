@@ -26,7 +26,7 @@ Start the frontend:
 npm run dev
 ```
 
-The app runs on `http://localhost:5173`.
+The app runs on `http://localhost:5173` (or next free port if 5173 is busy).
 
 ## Backend expectation
 
@@ -35,6 +35,9 @@ The Vite dev server proxies `/api` requests to `http://localhost:8000`, so start
 ```bash
 python3 -m uvicorn api.main:app --reload
 ```
+
+If you need a fixed backend URL instead of proxy defaults, create `ui/.env` from `ui/.env.example`
+and set `VITE_API_BASE_URL`.
 
 The UI expects these backend routes:
 

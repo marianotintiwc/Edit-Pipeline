@@ -14,8 +14,12 @@ import { ClipList } from "../components/ClipList";
 import { JobForm } from "../components/JobForm";
 import { PresetCards } from "../components/PresetCards";
 import { ReviewWorkspace } from "../features/review/ReviewWorkspace";
+import { SubtitleStylePanel } from "../components/style/SubtitleStylePanel";
+import { AlphaFillPanel } from "../components/style/AlphaFillPanel";
+import { TransitionsPanel } from "../components/style/TransitionsPanel";
+import { PostProcessPanel } from "../components/style/PostProcessPanel";
 
-interface StudioLayoutProps {
+export interface StudioLayoutProps {
   children?: ReactNode;
   preview: JobPreviewResponse | null;
   previewError: string | null;
@@ -24,6 +28,8 @@ interface StudioLayoutProps {
   selectedPreset: PresetDetail | null;
   form: JobInput;
   configOptions: ConfigOptions | null;
+  isConfigLoading: boolean;
+  isPresetsLoading: boolean;
   canPreview: boolean;
   onPresetSelect: (presetName: string) => void;
   onFormChange: (patch: Partial<JobInput>) => void;
@@ -69,7 +75,7 @@ export function StudioLayout(props: StudioLayoutProps) {
         {props.children}
       </div>
 
-      <PanelShell className="custom-scrollbar">
+      <div className="surface-card panel-shell custom-scrollbar">
         <span className="section-header">Studio panel</span>
         <h3>Preview and validations</h3>
         {props.preview ? (
@@ -88,7 +94,7 @@ export function StudioLayout(props: StudioLayoutProps) {
             description="Use the brief or style surfaces, then refresh the render plan before launching."
           />
         )}
-      </PanelShell>
+      </div>
     </div>
   );
 }
@@ -97,6 +103,8 @@ export function StudioBriefView({
   form,
   configOptions,
   presets,
+  isConfigLoading,
+  isPresetsLoading,
   selectedPreset,
   canPreview,
   onPresetSelect,
@@ -115,7 +123,16 @@ export function StudioBriefView({
         </p>
       </SurfaceCard>
 
-      <PresetCards presets={presets} onSelect={onPresetSelect} />
+      {isPresetsLoading ? (
+        <SurfaceCard muted>
+          <EmptyState
+            title="Loading presets"
+            description="Fetching server presets. You can still continue with manual setup."
+          />
+        </SurfaceCard>
+      ) : (
+        <PresetCards presets={presets} onSelect={onPresetSelect} />
+      )}
 
       {selectedPreset ? (
         <SurfaceCard muted>
@@ -126,7 +143,16 @@ export function StudioBriefView({
         </SurfaceCard>
       ) : null}
 
-      <JobForm value={form} onChange={onFormChange} configOptions={configOptions} />
+      {isConfigLoading ? (
+        <SurfaceCard muted>
+          <EmptyState
+            title="Loading form options"
+            description="Fetching geos, clip types, and editor defaults."
+          />
+        </SurfaceCard>
+      ) : (
+        <JobForm value={form} onChange={onFormChange} configOptions={configOptions} />
+      )}
 
       <ClipList
         clips={form.clips}
@@ -146,34 +172,46 @@ export function StudioBriefView({
 
 export function StudioStyleView({
   form,
-  configOptions,
   onFormChange,
   onPreview,
   canPreview,
 }: StudioLayoutProps) {
+  const styleOverrides = (form.style_overrides ?? {}) as Record<string, unknown>;
+
+  const handleStyleChange = (patch: Record<string, unknown>) => {
+    onFormChange({ style_overrides: patch });
+  };
+
   return (
-    <div className="shell-page">
+    <div className="shell-page" style={{ gap: "var(--space-4)" }}>
       <SurfaceCard>
-        <span className="section-header">Style lab</span>
-        <h2>Move common creative controls out of raw JSON</h2>
+        <span className="section-header">Style Lab</span>
+        <h2>Creative Controls</h2>
         <p className="helper">
-          This first pass keeps the current delivery form, but frames it as a creative control
-          surface with progressive disclosure instead of a payload editor.
+          Fine-tune subtitle styling, alpha compositing, transitions, and post-processing.
+          All changes are reflected in the render plan as style_overrides.
         </p>
       </SurfaceCard>
 
-      <JobForm value={form} onChange={onFormChange} configOptions={configOptions} />
+      <SubtitleStylePanel
+        styleOverrides={styleOverrides}
+        onChange={handleStyleChange}
+      />
 
-      <SurfaceCard muted>
-        <span className="section-header">Coming next</span>
-        <h3>Structured recipe controls</h3>
-        <ul>
-          <li>Subtitle presets and emphasis settings</li>
-          <li>Music mode, volume, and loop defaults</li>
-          <li>Alpha fill and background treatment recipes</li>
-          <li>Provider visibility and compatibility hints</li>
-        </ul>
-      </SurfaceCard>
+      <AlphaFillPanel
+        styleOverrides={styleOverrides}
+        onChange={handleStyleChange}
+      />
+
+      <TransitionsPanel
+        styleOverrides={styleOverrides}
+        onChange={handleStyleChange}
+      />
+
+      <PostProcessPanel
+        styleOverrides={styleOverrides}
+        onChange={handleStyleChange}
+      />
 
       <div className="button-row">
         <Button onClick={onPreview} disabled={!canPreview}>

@@ -1,12 +1,15 @@
 import type { JobSubmitResponse } from "../types";
 import { MonitorWorkspace } from "../features/monitor/MonitorWorkspace";
 import { EmptyState, SurfaceCard } from "../components/primitives";
+import { useParams } from "react-router-dom";
 
 interface RunsPageProps {
   latestJobResult: JobSubmitResponse | null;
 }
 
 export function RunsPage({ latestJobResult }: RunsPageProps) {
+  const { runId, recordId } = useParams<{ runId?: string; recordId?: string }>();
+
   return (
     <div className="runs-layout">
       <SurfaceCard>
@@ -28,7 +31,11 @@ export function RunsPage({ latestJobResult }: RunsPageProps) {
         )}
       </SurfaceCard>
 
-      <MonitorWorkspace initialJobId={latestJobResult?.job_id} initialRunId={latestJobResult?.run_id} />
+      <MonitorWorkspace
+        initialJobId={latestJobResult?.job_id}
+        initialRunId={runId ?? latestJobResult?.run_id}
+        initialRecordId={recordId}
+      />
     </div>
   );
 }
