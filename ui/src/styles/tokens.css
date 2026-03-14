@@ -1,0 +1,126 @@
+/**
+ * Design tokens aligned with Canvas Flow visual system.
+ * Dark theme default; light theme via [data-theme="light"].
+ */
+:root {
+  color-scheme: dark;
+
+  --bg-primary: #101014;
+  --bg-secondary: #14161b;
+  --bg-tertiary: #1a1c22;
+  --bg-elevated: #22252c;
+  --bg-hover: #2d333d;
+
+  --text-primary: #f0f0f3;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-disabled: #7c8694;
+
+  --border-subtle: #1e2128;
+  --border-default: #2d333d;
+  --border-strong: #3f4654;
+
+  --accent-primary: #d2a8f2;
+  --accent-secondary: #fb8263;
+  --accent-hover: #c197e1;
+  --accent-secondary-hover: #fa7151;
+  --accent-primary-light: #e0bfff;
+
+  --success: #10b981;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --error: #ef4444;
+  --error-hover: #dc2626;
+
+  --card-overlay-bg: rgba(0, 0, 0, 0.55);
+  --card-overlay-text: #ffffff;
+  --card-overlay-muted: rgba(255, 255, 255, 0.6);
+  --card-overlay-border: rgba(255, 255, 255, 0.1);
+  --card-gradient-start: rgba(0, 0, 0, 0.95);
+  --card-gradient-via: rgba(0, 0, 0, 0.4);
+  --card-title-color: #ffffff;
+  --card-text-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+  --footer-fade: rgba(0, 0, 0, 0.9);
+  --island-ambient-shadow: rgba(0, 0, 0, 0.7);
+
+  --shadow-sm: rgba(0, 0, 0, 0.3);
+  --shadow-md: rgba(0, 0, 0, 0.5);
+  --shadow-lg: rgba(0, 0, 0, 0.7);
+  --accent-primary-shadow: rgba(210, 168, 242, 0.3);
+  --accent-secondary-shadow: rgba(251, 130, 99, 0.3);
+
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-glacial: 600ms;
+  --duration-glacial: 600ms;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --font-sans: "Geist Sans", "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", sans-serif;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-tertiary: #e5e7eb;
+  --bg-elevated: #dde0e4;
+  --bg-hover: #d3d7dc;
+
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #5c6370;
+  --text-disabled: #7c8694;
+
+  --border-subtle: #d1d5db;
+  --border-default: #9ca3af;
+  --border-strong: #6b7280;
+
+  --accent-primary: #9333ea;
+  --accent-secondary: #b5560d;
+  --accent-hover: #7e22ce;
+  --accent-secondary-hover: #c2590c;
+  --accent-primary-light: #a855f7;
+
+  --success: #059669;
+  --warning: #d97706;
+  --info: #2563eb;
+  --error: #dc2626;
+  --error-hover: #b91c1c;
+
+  --card-overlay-bg: rgba(255, 255, 255, 0.75);
+  --card-overlay-text: #111827;
+  --card-overlay-muted: rgba(17, 24, 39, 0.6);
+  --card-overlay-border: rgba(0, 0, 0, 0.08);
+  --card-gradient-start: rgba(255, 255, 255, 0.95);
+  --card-gradient-via: rgba(255, 255, 255, 0.4);
+  --card-title-color: var(--text-primary);
+  --card-text-shadow: none;
+  --footer-fade: rgba(243, 244, 246, 0.9);
+  --island-ambient-shadow: rgba(255, 255, 255, 0.6);
+
+  --shadow-sm: rgba(0, 0, 0, 0.08);
+  --shadow-md: rgba(0, 0, 0, 0.12);
+  --shadow-lg: rgba(0, 0, 0, 0.18);
+  --accent-primary-shadow: rgba(168, 85, 247, 0.25);
+  --accent-secondary-shadow: rgba(251, 146, 60, 0.25);
+}
