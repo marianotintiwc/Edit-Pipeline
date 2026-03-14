@@ -16,6 +16,7 @@ class BatchCsvApiTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.submissions = []
                 self.fail_on_submission_number = None
+                self.status_calls = 0
 
             def submit_job(self, payload):
                 self.submissions.append(payload)
@@ -28,6 +29,7 @@ class BatchCsvApiTests(unittest.TestCase):
                 }
 
             def get_job_status(self, job_id):
+                self.status_calls += 1
                 return {
                     "status": "COMPLETED",
                     "stage": "Finished",
@@ -265,6 +267,34 @@ class BatchCsvApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["rows"][0]["status"], "completed")
+        self.assertEqual(self.runpod_service.status_calls, 1)
+
+    def test_get_batch_can_skip_refresh_for_fast_ui_polls(self):
+        create_response = self.client.post(
+            "/api/batches",
+            files={
+                "file": (
+                    "jobs.csv",
+                    io.BytesIO(
+                        (
+                            "geo,subtitle_mode,clips[0].type,clips[0].url\n"
+                            "MLA,auto,scene,https://example.com/scene1.mp4\n"
+                        ).encode("utf-8")
+                    ),
+                    "text/csv",
+                )
+            },
+        )
+        batch_id = create_response.json()["batch_id"]
+        self.client.post(f"/api/batches/{batch_id}/submit")
+        self.runpod_service.status_calls = 0
+
+        response = self.client.get(f"/api/batches/{batch_id}?refresh=false")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["rows"][0]["status"], "submitted")
+        self.assertEqual(self.runpod_service.status_calls, 0)
 
     def test_submit_batch_marks_failed_rows_without_aborting_the_entire_batch(self):
         self.runpod_service.fail_on_submission_number = 2
@@ -408,6 +438,71 @@ class BatchCsvApiTests(unittest.TestCase):
 
         self.assertEqual(submit_response.status_code, 200)
         self.assertEqual(self.runpod_service.submissions[0]["input"]["subtitle_mode"], "auto")
+
+    def test_submit_batch_honors_idempotency_key(self):
+        create_response = self.client.post(
+            "/api/batches",
+            files={
+                "file": (
+                    "jobs.csv",
+                    io.BytesIO(
+                        (
+                            "geo,clips[0].type,clips[0].url\n"
+                            "MLA,scene,https://example.com/scene1.mp4\n"
+                        ).encode("utf-8")
+                    ),
+                    "text/csv",
+                )
+            },
+        )
+        batch_id = create_response.json()["batch_id"]
+
+        first = self.client.post(
+            f"/api/batches/{batch_id}/submit",
+            headers={"Idempotency-Key": "batch-submit-1"},
+        )
+        second = self.client.post(
+            f"/api/batches/{batch_id}/submit",
+            headers={"Idempotency-Key": "batch-submit-1"},
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(self.runpod_service.submissions), 1)
+
+    def test_submit_batch_rejects_idempotency_key_payload_mismatch(self):
+        create_response = self.client.post(
+            "/api/batches",
+            files={
+                "file": (
+                    "jobs.csv",
+                    io.BytesIO(
+                        (
+                            "geo,clips[0].type,clips[0].url\n"
+                            "MLA,scene,https://example.com/scene1.mp4\n"
+                        ).encode("utf-8")
+                    ),
+                    "text/csv",
+                )
+            },
+        )
+        batch_id = create_response.json()["batch_id"]
+        self.client.post(
+            f"/api/batches/{batch_id}/submit",
+            headers={"Idempotency-Key": "batch-submit-2"},
+            json={"recipe_input": {"subtitle_mode": "auto"}},
+        )
+        conflict = self.client.post(
+            f"/api/batches/{batch_id}/submit",
+            headers={"Idempotency-Key": "batch-submit-2"},
+            json={"recipe_input": {"subtitle_mode": "none"}},
+        )
+
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(
+            conflict.json()["error_code"],
+            "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD",
+        )
 
 
 if __name__ == "__main__":

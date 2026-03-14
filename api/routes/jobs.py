@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
+from fastapi.responses import JSONResponse
 
+from api.app_config import AppConfig, get_app_config
 from api.auth import get_current_user
 from api.errors import error_response
+from api.metrics import LatencyMetric
+from api.services.idempotency_store import IdempotencyStore, get_idempotency_store
 from api.services.runpod import RunPodService, get_runpod_service
 from api.services.runs_store import RunsStore, get_runs_store
 from ugc_pipeline.planning import build_execution_plan
@@ -49,10 +53,14 @@ def preview_job(
 @router.post("")
 def submit_job(
     payload: Dict[str, Any],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    config: AppConfig = Depends(get_app_config),
     current_user: Dict[str, Any] = Depends(get_current_user),
     service: RunPodService = Depends(get_runpod_service),
     runs_store: RunsStore = Depends(get_runs_store),
+    idempotency_store: IdempotencyStore = Depends(get_idempotency_store),
 ) -> Dict[str, Any]:
+    metric = LatencyMetric("submit_job")
     try:
         preview = _build_plan_response(payload)
     except ValueError as exc:
@@ -62,6 +70,23 @@ def submit_job(
             message="Invalid job payload",
             details=[str(exc)],
         )
+    scope = "jobs:submit"
+    idempotency_enabled = config.hardening_enable_job_idempotency
+    if idempotency_enabled and idempotency_key:
+        cached = idempotency_store.get(
+            user_id=current_user["user_id"],
+            scope=scope,
+            idempotency_key=idempotency_key,
+        )
+        if cached:
+            if not idempotency_store.request_hash_matches(record=cached, request_payload=payload):
+                return error_response(
+                    status_code=409,
+                    error_code="IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD",
+                    message="Idempotency key already used with a different payload",
+                )
+            metric.finish(status="cached")
+            return JSONResponse(status_code=202, content=cached["response_payload"])
     normalized_input = preview["normalized_input"]
     plan = preview["plan"]
     if plan["plan_only"]:
@@ -71,6 +96,7 @@ def submit_job(
         }
         if plan["warnings"]:
             response["warnings"] = plan["warnings"]
+        metric.finish(status="plan_only")
         return response
     try:
         result = service.submit_job({"input": normalized_input})
@@ -95,7 +121,16 @@ def submit_job(
     }
     if plan["warnings"]:
         response["warnings"] = plan["warnings"]
-    return response
+    if idempotency_enabled and idempotency_key:
+        idempotency_store.put(
+            user_id=current_user["user_id"],
+            scope=scope,
+            idempotency_key=idempotency_key,
+            request_payload=payload,
+            response_payload=response,
+        )
+    metric.finish(status="submitted")
+    return JSONResponse(status_code=202, content=response)
 
 
 @router.get("/{job_id}")

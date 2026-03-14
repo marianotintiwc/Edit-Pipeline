@@ -5,12 +5,23 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
 
 # UGC Pipeline modules
-from ugc_pipeline.clips import process_clips, process_project_clips
-from ugc_pipeline.audio import process_audio
-from ugc_pipeline.subtitles import generate_subtitles
-from ugc_pipeline.style import load_style
-from ugc_pipeline.export import export_video
-from ugc_pipeline.postprocess import apply_postprocess
+# Some API-only workflows import submodules (e.g. request schema) without
+# requiring heavy video dependencies like moviepy. Keep imports optional.
+try:
+    from ugc_pipeline.clips import process_clips, process_project_clips
+    from ugc_pipeline.audio import process_audio
+    from ugc_pipeline.subtitles import generate_subtitles
+    from ugc_pipeline.style import load_style
+    from ugc_pipeline.export import export_video
+    from ugc_pipeline.postprocess import apply_postprocess
+except ImportError:
+    process_clips = None
+    process_project_clips = None
+    process_audio = None
+    generate_subtitles = None
+    load_style = None
+    export_video = None
+    apply_postprocess = None
 
 # FILM interpolation (optional - requires tensorflow)
 try:

@@ -73,6 +73,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 import re
 import time
+import random
 import requests
 
 try:
@@ -201,7 +202,11 @@ class UGCPipelineClient:
         url: str,
         *,
         json_payload: Optional[Dict[str, Any]] = None,
+        request_timeout: Optional[int] = None,
+        max_retries: Optional[int] = None,
     ) -> requests.Response:
+        timeout = request_timeout if request_timeout is not None else self.timeout
+        retries = self.max_retries if max_retries is None else max_retries
         attempt = 0
         while True:
             try:
@@ -210,19 +215,23 @@ class UGCPipelineClient:
                     url=url,
                     json=json_payload,
                     headers=self.headers,
-                    timeout=self.timeout,
+                    timeout=timeout,
                 )
             except requests.RequestException as exc:
-                if attempt >= self.max_retries:
+                if attempt >= retries:
                     raise
-                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt)
+                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt) + random.uniform(
+                    0, self.retry_backoff_seconds
+                )
                 time.sleep(sleep_seconds)
                 attempt += 1
                 continue
 
             # Retry transient upstream errors.
-            if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
-                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt)
+            if response.status_code in {429, 500, 502, 503, 504} and attempt < retries:
+                sleep_seconds = self.retry_backoff_seconds * (2 ** attempt) + random.uniform(
+                    0, self.retry_backoff_seconds
+                )
                 time.sleep(sleep_seconds)
                 attempt += 1
                 continue
@@ -347,8 +356,18 @@ class UGCPipelineClient:
         response.raise_for_status()
         return response.json()
 
-    def get_job_status(self, job_id: str) -> Dict[str, Any]:
-        response = self._request_with_retry("GET", f"{self.base_url}/status/{job_id}")
+    def get_job_status(
+        self,
+        job_id: str,
+        timeout_seconds: Optional[int] = None,
+        max_retries: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        response = self._request_with_retry(
+            "GET",
+            f"{self.base_url}/status/{job_id}",
+            request_timeout=timeout_seconds,
+            max_retries=max_retries,
+        )
         response.raise_for_status()
         return response.json()
 
