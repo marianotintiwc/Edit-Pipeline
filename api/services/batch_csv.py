@@ -6,6 +6,7 @@ import re
 from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
+from geo_mapping import normalize_geo
 from ugc_pipeline.request_schema import collect_payload_issues
 
 
@@ -132,6 +133,9 @@ def parse_batch_csv(
         )
         if recipe_input:
             input_payload = _deep_merge(recipe_input, input_payload)
+        # Normalize geo (BR -> MLB, etc.) for Whisper/language resolution
+        if input_payload.get("geo"):
+            input_payload["geo"] = normalize_geo(str(input_payload["geo"]))
         warnings, errors = collect_payload_issues(deepcopy(input_payload))
         rows.append(
             {

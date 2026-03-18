@@ -58,6 +58,17 @@ class RunPodService:
                 self._sleep_with_jitter(attempt)
         raise RuntimeError("RUNPOD_UNAVAILABLE: unable to fetch job status")
 
+    def cancel_job(self, job_id: str) -> Dict[str, Any]:
+        """Cancel a job (queued or in_progress). Idempotent for already terminal jobs."""
+        for attempt in range(self._status_max_retries + 1):
+            try:
+                return self._client.cancel_job(job_id)
+            except Exception as exc:
+                if attempt >= self._status_max_retries:
+                    raise RuntimeError("RUNPOD_UNAVAILABLE: unable to cancel job") from exc
+                self._sleep_with_jitter(attempt)
+        raise RuntimeError("RUNPOD_UNAVAILABLE: unable to cancel job")
+
 
 def get_runpod_service() -> RunPodService:
     config = get_app_config()

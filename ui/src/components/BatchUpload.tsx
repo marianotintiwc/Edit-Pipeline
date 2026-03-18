@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  cancelBatch as cancelBatchApi,
   createBatchFromCsv as createBatchFromCsvApi,
   getBatch as getBatchApi,
   listBatches as listBatchesApi,
@@ -52,10 +53,16 @@ export function BatchUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingBatch, setIsLoadingBatch] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isLoadingRecent, setIsLoadingRecent] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasPendingRows =
     batch?.rows.some((row) => ["ready", "failed"].includes(row.status) && row.input) ?? false;
+  const activeRowCount =
+    batch?.rows.filter((row) =>
+      ["submitted", "queued", "in_progress"].includes(row.status),
+    ).length ?? 0;
+  const hasActiveRows = activeRowCount > 0;
 
   const loadRecentBatches = async () => {
     setIsLoadingRecent(true);
@@ -173,6 +180,30 @@ export function BatchUpload({
     }
   };
 
+  const handleCancelBatch = async () => {
+    if (!batch) return;
+    if (
+      !window.confirm(
+        `Cancel ${activeRowCount} active job(s)? Only queued and in-progress jobs will be stopped.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setIsCancelling(true);
+    try {
+      await cancelBatchApi(batch.batch_id);
+      const nextBatch = await getBatch(batch.batch_id);
+      setBatch(nextBatch);
+      onBatchChange?.(nextBatch);
+      await loadRecentBatches();
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Failed to cancel batch");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const renderPreviewInline = !externalPreview;
 
   return (
@@ -272,6 +303,17 @@ export function BatchUpload({
       {batch && hasPendingRows ? (
         <Button onClick={() => void handleSubmit()} disabled={isSubmitting}>
           {isSubmitting ? "Submitting..." : "Submit pending rows"}
+        </Button>
+      ) : null}
+
+      {batch && hasActiveRows ? (
+        <Button
+          variant="secondary"
+          onClick={() => void handleCancelBatch()}
+          disabled={isCancelling}
+          aria-label={`Cancel ${activeRowCount} active jobs`}
+        >
+          {isCancelling ? "Cancelling..." : `Cancel ${activeRowCount} active job(s)`}
         </Button>
       ) : null}
 

@@ -7,7 +7,7 @@ interface JobFormProps {
   configOptions?: ConfigOptions | null;
 }
 
-const GEO_OPTIONS = ["MLA", "MLB", "MLC", "MLM"];
+const GEO_OPTIONS = ["MLA", "MLB", "BR", "MLC", "MLM"];
 const PRESET_OPTIONS = [
   "standard_vertical",
   "no_interpolation",

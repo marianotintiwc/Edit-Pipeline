@@ -132,7 +132,8 @@ export type BatchRowStatus =
   | "queued"
   | "in_progress"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface BatchRowResult {
   row_number: number;
@@ -171,4 +172,32 @@ export interface BatchListItem {
 
 export interface BatchListResponse {
   items: BatchListItem[];
+}
+
+export interface Profile {
+  profile_id: string;
+  name: string;
+  input: Partial<JobInput>;
+  is_meli?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProfileListResponse {
+  items: Profile[];
+}
+
+export interface CancelRunResponse {
+  run_id: string;
+  cancelled: boolean;
+  reason?: string;
+  job_id?: string;
+  status?: string;
+}
+
+export interface CancelBatchResponse {
+  batch_id: string;
+  cancelled_ok: string[];
+  already_terminal: string[];
+  failed_cancel: string[];
 }

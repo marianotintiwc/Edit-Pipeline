@@ -129,7 +129,10 @@ describe("BatchUpload", () => {
     await user.upload(input, file);
 
     await waitFor(() => {
-      expect(createBatch).toHaveBeenCalledWith(file);
+      expect(createBatch).toHaveBeenCalledWith(file, {
+        mapping: undefined,
+        recipeInput: undefined,
+      });
     });
 
     expect(await screen.findByText("1 valid row")).toBeInTheDocument();
@@ -147,7 +150,7 @@ describe("BatchUpload", () => {
     await user.click(screen.getByRole("button", { name: "Submit pending rows" }));
 
     await waitFor(() => {
-      expect(submitBatch).toHaveBeenCalledWith("batch-1");
+      expect(submitBatch).toHaveBeenCalledWith("batch-1", { recipeInput: undefined });
     });
 
     expect(await screen.findByText("1 row submitted")).toBeInTheDocument();

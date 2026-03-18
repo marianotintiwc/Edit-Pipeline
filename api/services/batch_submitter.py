@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict
 
+from geo_mapping import normalize_geo
+
 from api.services.runpod import RunPodService
 from api.services.runs_store import RunsStore
 
@@ -40,6 +42,9 @@ def submit_batch_rows(
         if recipe_input:
             row_input = deep_merge(recipe_input, row_input)
             next_row["input"] = row_input
+        # Normalize geo (BR -> MLB, etc.) for Whisper/language resolution
+        if row_input.get("geo"):
+            row_input["geo"] = normalize_geo(str(row_input["geo"]))
         payload = {"input": row_input}
         try:
             submit_result = runpod_service.submit_job(payload)

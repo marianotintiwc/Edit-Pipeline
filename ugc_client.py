@@ -371,6 +371,12 @@ class UGCPipelineClient:
         response.raise_for_status()
         return response.json()
 
+    def cancel_job(self, job_id: str) -> Dict[str, Any]:
+        """Cancel a job (queued or in_progress). Idempotent for already terminal jobs."""
+        response = self._request_with_retry("POST", f"{self.base_url}/cancel/{job_id}")
+        response.raise_for_status()
+        return response.json()
+
 
 if __name__ == "__main__":
     import os

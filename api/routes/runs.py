@@ -42,3 +42,50 @@ def get_run(
             # Return last persisted snapshot when provider is temporarily unavailable.
             return run
     return run
+
+
+@router.post("/{run_id}/cancel")
+def cancel_run(
+    run_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    runs_store: RunsStore = Depends(get_runs_store),
+    runpod_service: RunPodService = Depends(get_runpod_service),
+) -> Dict[str, Any]:
+    try:
+        run = runs_store.get_run(run_id=run_id, user_id=current_user["user_id"])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found") from exc
+
+    status = run.get("status", "")
+    if status not in ("submitted", "queued", "in_progress", "IN_QUEUE", "IN_PROGRESS"):
+        return {
+            "run_id": run_id,
+            "cancelled": False,
+            "reason": "already_terminal",
+            "status": status,
+        }
+
+    job_id = run.get("job_id")
+    if not isinstance(job_id, str) or not job_id:
+        return {
+            "run_id": run_id,
+            "cancelled": False,
+            "reason": "no_job_id",
+        }
+
+    try:
+        runpod_service.cancel_job(job_id)
+        runs_store.update_job_status(
+            job_id=job_id,
+            status_payload={"status": "CANCELLED", "stage": "cancelled"},
+        )
+        return {
+            "run_id": run_id,
+            "job_id": job_id,
+            "cancelled": True,
+        }
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not cancel job: {exc}",
+        ) from exc

@@ -24,7 +24,9 @@ import type {
   JobSubmitResponse,
   PresetDetail,
   PresetListItem,
+  Profile,
 } from "./types";
+import { applyProfileToForm } from "./components/ProfileSelector";
 
 const DEFAULT_FORM: JobInput = {
   geo: "",
@@ -56,6 +58,7 @@ function AppContent() {
   const [presets, setPresets] = useState<PresetListItem[]>([]);
   const [isPresetsLoading, setIsPresetsLoading] = useState(true);
   const [selectedPreset, setSelectedPreset] = useState<PresetDetail | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [form, setForm] = useState<JobInput>(() => mergeFormWithDefaults(DEFAULT_FORM));
   const [errors, setErrors] = useState<string[]>([]);
   const [preview, setPreview] = useState<JobPreviewResponse | null>(null);
@@ -88,12 +91,22 @@ function AppContent() {
     try {
       const preset = await getPreset(presetName);
       setSelectedPreset(preset);
+      setSelectedProfile(null);
       setPreview(null);
       setPreviewError(null);
       setForm(mergeFormWithDefaults(preset.input));
       navigate("/studio/brief");
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "Failed to load preset"]);
+    }
+  };
+
+  const handleProfileSelect = (profile: Profile | null) => {
+    setSelectedProfile(profile);
+    setPreview(null);
+    setPreviewError(null);
+    if (profile) {
+      setForm((current) => applyProfileToForm(current, profile));
     }
   };
 
@@ -160,6 +173,7 @@ function AppContent() {
     isPreviewLoading,
     presets,
     selectedPreset,
+    selectedProfile,
     form,
     configOptions,
     isConfigLoading,
@@ -168,6 +182,7 @@ function AppContent() {
     onPresetSelect: (presetName: string) => {
       void handlePresetSelection(presetName);
     },
+    onProfileSelect: handleProfileSelect,
     onFormChange: updateForm,
     onClipsChange: handleClipsChange,
     onAddClip: handleAddClip,

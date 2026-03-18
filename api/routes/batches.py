@@ -216,6 +216,65 @@ def get_batch(
     )
 
 
+@router.post("/{batch_id}/cancel")
+def cancel_batch(
+    batch_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    batch_store: BatchStore = Depends(get_batch_store),
+    runpod_service: RunPodService = Depends(get_runpod_service),
+    runs_store: RunsStore = Depends(get_runs_store),
+) -> Dict[str, Any]:
+    try:
+        batch = batch_store.get_batch(batch_id=batch_id, user_id=current_user["user_id"])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Batch '{batch_id}' not found") from exc
+
+    active_statuses = {"submitted", "queued", "in_progress"}
+    cancelled_ok: list[str] = []
+    already_terminal: list[str] = []
+    failed_cancel: list[str] = []
+
+    updated_rows = []
+    for row in batch.get("rows", []):
+        next_row = dict(row)
+        job_id = next_row.get("job_id")
+        if next_row.get("status") not in active_statuses:
+            if job_id:
+                already_terminal.append(job_id)
+            updated_rows.append(next_row)
+            continue
+
+        if not job_id:
+            updated_rows.append(next_row)
+            continue
+
+        try:
+            runpod_service.cancel_job(job_id)
+            runs_store.update_job_status(
+                job_id=job_id,
+                status_payload={"status": "CANCELLED", "stage": "cancelled"},
+            )
+            next_row["status"] = "cancelled"
+            cancelled_ok.append(job_id)
+        except RuntimeError:
+            failed_cancel.append(job_id)
+        updated_rows.append(next_row)
+
+    if cancelled_ok or failed_cancel:
+        batch_store.update_batch(
+            batch_id=batch_id,
+            user_id=current_user["user_id"],
+            patch={"rows": updated_rows},
+        )
+
+    return {
+        "batch_id": batch_id,
+        "cancelled_ok": cancelled_ok,
+        "already_terminal": already_terminal,
+        "failed_cancel": failed_cancel,
+    }
+
+
 @router.post("/{batch_id}/submit")
 def submit_batch(
     batch_id: str,

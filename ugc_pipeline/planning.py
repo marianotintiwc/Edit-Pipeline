@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from geo_mapping import normalize_geo
 from ugc_pipeline.request_schema import collect_payload_issues
 
 
@@ -35,6 +36,10 @@ class ExecutionPlan:
 def build_execution_plan(job_input: Dict[str, Any]) -> ExecutionPlan:
     if not isinstance(job_input, dict):
         raise ValueError("payload.input must be an object")
+    # Normalize geo (BR -> MLB, etc.) for Whisper/language resolution
+    if job_input.get("geo"):
+        job_input = dict(job_input)
+        job_input["geo"] = normalize_geo(str(job_input["geo"]))
     warnings, errors = collect_payload_issues(job_input)
     if errors:
         raise ValueError("; ".join(errors))

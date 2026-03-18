@@ -8,10 +8,12 @@ import type {
   JobPreviewResponse,
   PresetDetail,
   PresetListItem,
+  Profile,
 } from "../types";
 import { Button, EmptyState, PanelShell, SurfaceCard, ToolbarPill } from "../components/primitives";
 import { ClipList } from "../components/ClipList";
 import { JobForm } from "../components/JobForm";
+import { ProfileSelector } from "../components/ProfileSelector";
 import { PresetCards } from "../components/PresetCards";
 import { ReviewWorkspace } from "../features/review/ReviewWorkspace";
 import { SubtitleStylePanel } from "../components/style/SubtitleStylePanel";
@@ -26,12 +28,14 @@ export interface StudioLayoutProps {
   isPreviewLoading: boolean;
   presets: PresetListItem[];
   selectedPreset: PresetDetail | null;
+  selectedProfile: Profile | null;
   form: JobInput;
   configOptions: ConfigOptions | null;
   isConfigLoading: boolean;
   isPresetsLoading: boolean;
   canPreview: boolean;
   onPresetSelect: (presetName: string) => void;
+  onProfileSelect: (profile: Profile | null) => void;
   onFormChange: (patch: Partial<JobInput>) => void;
   onClipsChange: (clips: ClipInput[]) => void;
   onAddClip: () => void;
@@ -106,8 +110,10 @@ export function StudioBriefView({
   isConfigLoading,
   isPresetsLoading,
   selectedPreset,
+  selectedProfile,
   canPreview,
   onPresetSelect,
+  onProfileSelect,
   onFormChange,
   onClipsChange,
   onAddClip,
@@ -142,6 +148,12 @@ export function StudioBriefView({
           {selectedPreset.recommended_for ? <p className="helper">{selectedPreset.recommended_for}</p> : null}
         </SurfaceCard>
       ) : null}
+
+      <ProfileSelector
+        selectedProfileId={selectedProfile?.profile_id ?? null}
+        onSelectProfile={onProfileSelect}
+        appliedProfileId={selectedProfile?.profile_id ?? null}
+      />
 
       {isConfigLoading ? (
         <SurfaceCard muted>

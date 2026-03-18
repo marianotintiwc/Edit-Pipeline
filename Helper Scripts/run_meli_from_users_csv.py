@@ -10,6 +10,10 @@ from typing import Dict, Any
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse, unquote
+
+import boto3
+from botocore.exceptions import ClientError
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -112,7 +116,10 @@ def _build_row_dict(headers: list, values: list) -> Dict[str, str]:
             row["scene_3_lipsync"] = values[scene_3_idx]
 
     if "BROLL S3 URL" not in row:
-        broll_idx = _get_index_any(headers, ["BROLL S3 URL", "BROLL", "broll", "Broll", "broll_url", "Broll_S3_URL"])
+        broll_idx = _get_index_any(
+            headers,
+            ["BROLL S3 URL", "BROLL", "broll", "Broll", "Broll1", "broll1", "broll_url", "Broll_S3_URL"],
+        )
         if broll_idx >= 0 and len(values) > broll_idx:
             row["BROLL S3 URL"] = values[broll_idx]
     if "ENDCARD S3 URL" not in row:
@@ -124,7 +131,7 @@ def _build_row_dict(headers: list, values: list) -> Dict[str, str]:
 
 
 def _normalize_url(url: str) -> str:
-    from urllib.parse import quote, unquote, urlparse
+    from urllib.parse import quote
     url = (url or "").strip()
     if url.startswith("s3://"):
         # Convert s3://bucket/key to https://s3.us-east-2.amazonaws.com/bucket/key
@@ -158,6 +165,71 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+def _parse_s3_location(url: str) -> tuple[str, str] | None:
+    raw = (url or "").strip()
+    if not raw:
+        return None
+
+    if raw.startswith("s3://"):
+        without_scheme = raw[len("s3://"):]
+        if "/" not in without_scheme:
+            return None
+        bucket, key = without_scheme.split("/", 1)
+        return bucket, unquote(key)
+
+    parsed = urlparse(raw)
+    host = parsed.netloc
+    path = unquote(parsed.path.lstrip("/"))
+    if not host or not path:
+        return None
+
+    # Path style: https://s3.<region>.amazonaws.com/<bucket>/<key>
+    if host.startswith("s3.") and host.endswith(".amazonaws.com"):
+        if "/" not in path:
+            return None
+        bucket, key = path.split("/", 1)
+        return bucket, key
+
+    # Virtual hosted style: https://<bucket>.s3.amazonaws.com/<key>
+    if ".s3.amazonaws.com" in host:
+        bucket = host.split(".s3.amazonaws.com", 1)[0]
+        return bucket, path
+
+    return None
+
+
+def _to_presigned_url(url: str, s3_client: Any, expires_seconds: int) -> str:
+    normalized = _normalize_url(url)
+    parsed = urlparse(normalized)
+    if parsed.query and "X-Amz-Signature=" in parsed.query:
+        return normalized
+
+    location = _parse_s3_location(normalized)
+    if not location:
+        return normalized
+
+    bucket, key = location
+    # Some CSV URLs use '+' where S3 object keys actually contain spaces.
+    # Resolve that mismatch before signing so RunPod can download assets.
+    if "+" in key:
+        try:
+            s3_client.head_object(Bucket=bucket, Key=key)
+        except ClientError as e:
+            code = (e.response or {}).get("Error", {}).get("Code", "")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                spaced_key = key.replace("+", " ")
+                try:
+                    s3_client.head_object(Bucket=bucket, Key=spaced_key)
+                    key = spaced_key
+                except ClientError:
+                    pass
+    return s3_client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=expires_seconds,
+    )
+
+
 def _sanitize_filename_part(value: str) -> str:
     if not value:
         return ""
@@ -166,18 +238,74 @@ def _sanitize_filename_part(value: str) -> str:
     return text
 
 
+def _infer_geo_from_row(row: Dict[str, str]) -> str:
+    """
+    Infer MercadoLibre GEO from row fields when explicit GEO column is missing.
+    Supports values like MLB/MLA and country hints like BR.
+    """
+    candidates = [
+        row.get("GEO"),
+        row.get("geo"),
+        row.get("video_name"),
+        row.get("Video_Name"),
+        row.get("scene_1_lipsync"),
+    ]
+    for raw in candidates:
+        text = (raw or "").strip()
+        if not text:
+            continue
+        upper = text.upper()
+        if "-MLB" in upper or "_MLB" in upper or "MLB" == upper:
+            return "MLB"
+        if "-MLA" in upper or "_MLA" in upper or "MLA" == upper:
+            return "MLA"
+        if "-MLC" in upper or "_MLC" in upper or "MLC" == upper:
+            return "MLC"
+        if "-MLM" in upper or "_MLM" in upper or "MLM" == upper:
+            return "MLM"
+        if "-BR" in upper or "_BR" in upper or " BR " in f" {upper} " or upper == "BR":
+            return "MLB"
+    return ""
+
+
 def build_payload(
     row: Dict[str, str],
     base_style: Dict[str, Any],
     default_introcard_url: str,
     output_folder: str,
+    output_bucket: str | None = None,
+    s3_client: Any | None = None,
+    presign_expires_seconds: int = 43200,
 ) -> Dict[str, Any]:
     geo = normalize_geo((row.get("GEO") or row.get("geo") or "").strip())
+    if not geo:
+        geo = normalize_geo(_infer_geo_from_row(row))
     scene1 = _normalize_url((row.get("scene_1_lipsync") or "").strip())
     scene2 = _normalize_url((row.get("scene_2_lipsync") or "").strip())
     scene3 = _normalize_url((row.get("scene_3_lipsync") or "").strip())
-    broll_url = _normalize_url(row.get("BROLL S3 URL") or row.get("Broll") or "")
+    broll_url = _normalize_url(
+        row.get("BROLL S3 URL")
+        or row.get("Broll")
+        or row.get("Broll1")
+        or row.get("broll1")
+        or ""
+    )
     endcard_url = _normalize_url(row.get("ENDCARD S3 URL") or row.get("Endcard") or "")
+    introcard_url = _normalize_url(
+        row.get("introcard")
+        or row.get("Introcard")
+        or row.get("INTROCARD")
+        or default_introcard_url
+        or ""
+    )
+
+    if s3_client is not None:
+        scene1 = _to_presigned_url(scene1, s3_client, presign_expires_seconds)
+        scene2 = _to_presigned_url(scene2, s3_client, presign_expires_seconds)
+        scene3 = _to_presigned_url(scene3, s3_client, presign_expires_seconds)
+        broll_url = _to_presigned_url(broll_url, s3_client, presign_expires_seconds)
+        endcard_url = _to_presigned_url(endcard_url, s3_client, presign_expires_seconds)
+        introcard_url = _to_presigned_url(introcard_url, s3_client, presign_expires_seconds)
 
     if not (scene1 and scene2 and scene3):
         raise ValueError("missing one or more scene URLs")
@@ -196,6 +324,16 @@ def build_payload(
     style = copy.deepcopy(base_style)
     style.setdefault("endcard", {})
     style["endcard"]["url"] = endcard_url
+    # Requested subtitle style: no black stroke; text uses stroke color as fill.
+    if style.get("stroke_color"):
+        style["color"] = style.get("stroke_color")
+    style["stroke_width"] = 0
+    if isinstance(style.get("highlight"), dict):
+        style["highlight"]["stroke_width"] = 0
+        if style["highlight"].get("stroke_color"):
+            style["highlight"]["text_color"] = style["highlight"]["stroke_color"]
+        elif style.get("stroke_color"):
+            style["highlight"]["text_color"] = style.get("stroke_color")
     style["broll_alpha_fill"] = {
         "enabled": True,
         "invert_alpha": False,
@@ -203,14 +341,16 @@ def build_payload(
     }
 
     clips = []
-    if default_introcard_url:
-        clips.append({"type": "introcard", "url": _normalize_url(default_introcard_url)})
+    if introcard_url:
+        clips.append({"type": "introcard", "url": introcard_url})
+    # Clip order must match preset: introcard, scene1, scene2, scene3, broll, endcard.
+    # Do NOT send start_time/end_time or duration for endcard — pipeline uses file duration.
     clips.extend(
         [
             {"type": "scene", "url": scene1},
             {"type": "scene", "url": scene2},
-            {"type": "broll", "url": broll_url},
             {"type": "scene", "url": scene3},
+            {"type": "broll", "url": broll_url},
             {"type": "endcard", "url": endcard_url},
         ]
     )
@@ -220,6 +360,8 @@ def build_payload(
         or row.get("FILE_NAME")
         or row.get("filename")
         or row.get("file_name")
+        or row.get("video_name")
+        or row.get("Video_Name")
         or ""
     ).strip()
     safe_file_name = _sanitize_filename_part(file_name_raw)
@@ -234,7 +376,7 @@ def build_payload(
     else:
         output_filename = f"{parent}_MELI_EDIT.mp4"
 
-    return {
+    payload = {
         "input": {
             "job_id": f"meli_user_{parent}",
             "geo": geo,
@@ -247,6 +389,9 @@ def build_payload(
             "style_overrides": style,
         }
     }
+    if output_bucket:
+        payload["input"]["output_bucket"] = output_bucket
+    return payload
 
 
 def main() -> None:
@@ -276,6 +421,13 @@ def main() -> None:
     request_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     output_folder = os.environ.get("OUTPUT_FOLDER", "outputs").strip() or "outputs"
+    output_bucket = os.environ.get("OUTPUT_BUCKET", "").strip() or None
+    presign_s3_urls = os.environ.get("PRESIGN_S3_URLS", "1").strip().lower() not in {"0", "false", "no"}
+    presign_expires_seconds = int(os.environ.get("PRESIGN_EXPIRES_SECONDS", "43200"))
+    s3_client = None
+    if presign_s3_urls:
+        s3_region = os.environ.get("AWS_DEFAULT_REGION", "us-east-2")
+        s3_client = boto3.client("s3", region_name=s3_region)
 
     try:
         if os.path.exists(LOG_PATH):
@@ -297,7 +449,15 @@ def main() -> None:
             row = _build_row_dict(csv_headers, values)
             parent = parse_parent_from_scene_url((row.get("scene_1_lipsync") or "").strip())
             try:
-                payload = build_payload(row, base_style, default_introcard_url, output_folder)
+                payload = build_payload(
+                    row,
+                    base_style,
+                    default_introcard_url,
+                    output_folder,
+                    output_bucket=output_bucket,
+                    s3_client=s3_client,
+                    presign_expires_seconds=presign_expires_seconds,
+                )
             except ValueError as e:
                 log(f"Skipping {parent}: {e}")
                 continue

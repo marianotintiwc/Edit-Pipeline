@@ -1,6 +1,8 @@
 import type {
   BatchDetail,
   BatchListResponse,
+  CancelBatchResponse,
+  CancelRunResponse,
   ConfigOptions,
   JobInput,
   JobPreviewResponse,
@@ -8,6 +10,8 @@ import type {
   JobSubmitResponse,
   PresetDetail,
   PresetListResponse,
+  Profile,
+  ProfileListResponse,
   RunDetail,
   RunsListResponse,
 } from "./types";
@@ -161,4 +165,69 @@ export async function submitBatch(
     body: JSON.stringify({ recipe_input: options?.recipeInput ?? null }),
   });
   return readJson<BatchDetail>(response);
+}
+
+export async function cancelBatch(batchId: string): Promise<CancelBatchResponse> {
+  const response = await fetch(getApiUrl(`/api/batches/${batchId}/cancel`), {
+    method: "POST",
+    credentials: "include",
+  });
+  return readJson<CancelBatchResponse>(response);
+}
+
+export async function listProfiles(): Promise<ProfileListResponse> {
+  const response = await fetch(getApiUrl("/api/profiles"), {
+    credentials: "include",
+  });
+  return readJson<ProfileListResponse>(response);
+}
+
+export async function getProfile(profileId: string): Promise<Profile> {
+  const response = await fetch(getApiUrl(`/api/profiles/${profileId}`), {
+    credentials: "include",
+  });
+  return readJson<Profile>(response);
+}
+
+export async function createProfile(payload: {
+  name: string;
+  input: Partial<JobInput>;
+  is_meli?: boolean;
+}): Promise<Profile> {
+  const response = await fetch(getApiUrl("/api/profiles"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<Profile>(response);
+}
+
+export async function updateProfile(
+  profileId: string,
+  payload: { name?: string; input?: Partial<JobInput>; is_meli?: boolean },
+): Promise<Profile> {
+  const response = await fetch(getApiUrl(`/api/profiles/${profileId}`), {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<Profile>(response);
+}
+
+export async function deleteProfile(profileId: string): Promise<{ deleted: string }> {
+  const response = await fetch(getApiUrl(`/api/profiles/${profileId}`), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return readJson<{ deleted: string }>(response);
+}
+
+export async function cancelRun(runId: string): Promise<CancelRunResponse> {
+  const response = await fetch(getApiUrl(`/api/runs/${runId}/cancel`), {
+    method: "POST",
+    credentials: "include",
+  });
+  return readJson<CancelRunResponse>(response);
 }

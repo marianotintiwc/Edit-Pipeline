@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useParams } from "react-router-dom";
 
 import { BatchWorkspace } from "../features/batch/BatchWorkspace";
 import { StepRail, SurfaceCard } from "../components/primitives";
@@ -11,11 +11,10 @@ const STEPS = [
   { id: "preview", title: "Batch preview" },
 ];
 
-interface BatchPageProps {
-  activeStepId: string;
-}
+export function BatchPage() {
+  const { stepId } = useParams<{ stepId?: string }>();
+  const activeStepId = stepId ?? "import";
 
-export function BatchPage({ activeStepId }: BatchPageProps) {
   return (
     <div className="batch-layout shell-page">
       <SurfaceCard>

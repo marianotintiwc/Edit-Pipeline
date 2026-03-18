@@ -1,10 +1,18 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import { getRun as getRunApi, listRuns as listRunsApi } from "../../api";
+import { cancelRun as cancelRunApi, getRun as getRunApi, listRuns as listRunsApi } from "../../api";
 import { JobStatus } from "../../components/JobStatus";
 import { Button, EmptyState } from "../../components/primitives";
 import type { RunDetail, RunListItem } from "../../types";
+
+const ACTIVE_RUN_STATUSES = new Set([
+  "submitted",
+  "queued",
+  "in_progress",
+  "IN_QUEUE",
+  "IN_PROGRESS",
+]);
 
 interface MonitorWorkspaceProps {
   initialJobId?: string;
@@ -68,6 +76,25 @@ export function MonitorWorkspace({ initialJobId, initialRunId, initialRecordId }
     }
   };
 
+  const handleCancelRun = async (runId: string) => {
+    if (!window.confirm("Cancel this run? The job will be stopped.")) {
+      return;
+    }
+    try {
+      await cancelRunApi(runId);
+      const response = await listRunsApi();
+      setRuns(response.items);
+      const run = response.items.find((r) => r.run_id === runId);
+      if (run) {
+        const detail = await getRunApi(runId);
+        setSelectedRun(detail);
+      }
+      setError(null);
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Failed to cancel run");
+    }
+  };
+
   return (
     <section aria-labelledby="monitor-workspace-title">
       <h2 id="monitor-workspace-title">Monitor runs</h2>
@@ -100,6 +127,15 @@ export function MonitorWorkspace({ initialJobId, initialRunId, initialRecordId }
             <Button variant="secondary" onClick={() => void handleOpenRun(run.run_id)}>
               Open {run.run_id}
             </Button>
+            {ACTIVE_RUN_STATUSES.has(run.status) ? (
+              <Button
+                variant="ghost"
+                onClick={() => void handleCancelRun(run.run_id)}
+                aria-label={`Cancel run ${run.run_id}`}
+              >
+                Cancel run
+              </Button>
+            ) : null}
             <Link to={`/runs/${run.run_id}`}>
               <Button variant="ghost">Permalink</Button>
             </Link>
@@ -116,6 +152,17 @@ export function MonitorWorkspace({ initialJobId, initialRunId, initialRecordId }
           <p>{selectedRun.run_id}</p>
           {initialRecordId ? <p className="helper">Focused record: {initialRecordId}</p> : null}
           {selectedRun.output_url ? <p>{selectedRun.output_url}</p> : null}
+          {ACTIVE_RUN_STATUSES.has(selectedRun.status) ? (
+            <div className="button-row" style={{ marginBottom: "var(--space-2)" }}>
+              <Button
+                variant="ghost"
+                onClick={() => void handleCancelRun(selectedRun.run_id)}
+                aria-label={`Cancel run ${selectedRun.run_id}`}
+              >
+                Cancel run
+              </Button>
+            </div>
+          ) : null}
           <JobStatus jobId={selectedRun.job_id ?? initialJobId ?? ""} />
         </section>
       ) : initialJobId ? (

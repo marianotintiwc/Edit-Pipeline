@@ -13,6 +13,7 @@ from api.routes.batches import router as batches_router
 from api.routes.config import router as config_router
 from api.routes.jobs import router as jobs_router
 from api.routes.presets import router as presets_router
+from api.routes.profiles import router as profiles_router
 from api.routes.runs import router as runs_router
 
 config = get_app_config()
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(config_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
 app.include_router(presets_router, prefix="/api")
+app.include_router(profiles_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
 app.include_router(batches_router, prefix="/api")
 

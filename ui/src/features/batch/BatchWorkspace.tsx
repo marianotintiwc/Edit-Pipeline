@@ -2,12 +2,12 @@ import { Link } from "react-router-dom";
 import { useState } from "react";
 
 import type { BatchDetail } from "../../types";
-import type { Recipe } from "../../data/recipes";
+import type { RecipeOrProfile } from "../../components/batch/BatchRecipe";
 import { BatchPreview } from "../../components/BatchPreview";
 import { BatchUpload } from "../../components/BatchUpload";
 import { BatchMapping } from "../../components/batch/BatchMapping";
 import { BatchValidation } from "../../components/batch/BatchValidation";
-import { BatchRecipe } from "../../components/batch/BatchRecipe";
+import { BatchRecipe, batchRecipeToInput } from "../../components/batch/BatchRecipe";
 import { CsvTemplateGenerator } from "../../components/batch/CsvTemplateGenerator";
 import { Button, EmptyState, SurfaceCard } from "../../components/primitives";
 
@@ -19,7 +19,7 @@ export function BatchWorkspace({ activeStepId }: BatchWorkspaceProps) {
   const [batch, setBatch] = useState<BatchDetail | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
+  const [selectedRecipeOrProfileId, setSelectedRecipeOrProfileId] = useState<string | null>(null);
   const [selectedRecipeInput, setSelectedRecipeInput] = useState<Record<string, unknown> | null>(null);
 
   const getInputPaths = (value: unknown, prefix = ""): string[] => {
@@ -54,9 +54,15 @@ export function BatchWorkspace({ activeStepId }: BatchWorkspaceProps) {
     URL.revokeObjectURL(url);
   };
 
-  const handleRecipeSelect = (recipe: Recipe) => {
-    setSelectedRecipeId(recipe.id);
-    setSelectedRecipeInput((recipe.input ?? null) as Record<string, unknown> | null);
+  const handleRecipeOrProfileSelect = (item: RecipeOrProfile | null) => {
+    if (!item) {
+      setSelectedRecipeOrProfileId(null);
+      setSelectedRecipeInput(null);
+      return;
+    }
+    const id = item.kind === "recipe" ? `recipe-${item.recipe.id}` : `profile-${item.profile.profile_id}`;
+    setSelectedRecipeOrProfileId(id);
+    setSelectedRecipeInput(batchRecipeToInput(item));
   };
 
   if (activeStepId === "preview") {
@@ -148,8 +154,8 @@ export function BatchWorkspace({ activeStepId }: BatchWorkspaceProps) {
   if (activeStepId === "recipe") {
     return (
       <section className="surface-stack">
-          <BatchRecipe selectedRecipeId={selectedRecipeId} onSelectRecipe={handleRecipeSelect} />
-          {selectedRecipeId ? (
+          <BatchRecipe selectedId={selectedRecipeOrProfileId} onSelect={handleRecipeOrProfileSelect} />
+          {selectedRecipeOrProfileId ? (
             <p className="helper">Selected recipe will be applied on upload/submit.</p>
           ) : (
             <p className="helper">No recipe selected. Rows keep CSV-provided values only.</p>

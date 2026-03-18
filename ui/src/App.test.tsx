@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   getPresets: vi.fn(),
   getPreset: vi.fn(),
   getConfigOptions: vi.fn(),
+  listProfiles: vi.fn(),
   previewJob: vi.fn(),
   submitJob: vi.fn(),
   submitBatch: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("./api", () => ({
   getPresets: apiMocks.getPresets,
   getPreset: apiMocks.getPreset,
   getConfigOptions: apiMocks.getConfigOptions,
+  listProfiles: apiMocks.listProfiles,
   previewJob: apiMocks.previewJob,
   submitJob: apiMocks.submitJob,
   submitBatch: apiMocks.submitBatch,
@@ -76,6 +78,7 @@ const PRESETS = {
 beforeEach(() => {
   apiMocks.getPresets.mockResolvedValue(PRESETS);
   apiMocks.getConfigOptions.mockResolvedValue(CONFIG_OPTIONS);
+  apiMocks.listProfiles.mockResolvedValue({ items: [] });
   apiMocks.getPreset.mockResolvedValue({
     name: "meli_edit_classic",
     label: "MELI Edit Classic",
@@ -250,7 +253,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Studio" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Batch" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Runs" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Start in Studio, keep Batch and Runs close" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Build, style, scale, and ship videos" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Studio" }));
     expect(await screen.findByText("Choose a starting point")).toBeInTheDocument();
