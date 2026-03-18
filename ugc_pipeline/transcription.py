@@ -36,6 +36,36 @@ def normalize_mercado_pago(text: str) -> str:
     return text
 
 
+def _merge_mercado_pago_across_segments(segments: list) -> list:
+    """Merge trailing 'mercado' + leading 'pago' across consecutive segments."""
+    if not segments:
+        return segments
+
+    for i in range(len(segments) - 1):
+        current_text = (segments[i].get("text") or "").strip()
+        next_text = segments[i + 1].get("text") or ""
+        if not current_text or not next_text:
+            continue
+
+        if re.search(r"\bmercado\s*$", current_text, flags=re.IGNORECASE) and re.search(
+            r"^\s*pago\b", next_text, flags=re.IGNORECASE
+        ):
+            segments[i]["text"] = re.sub(
+                r"\bmercado\s*$",
+                "Mercado Pago",
+                current_text,
+                flags=re.IGNORECASE,
+            )
+            segments[i + 1]["text"] = re.sub(
+                r"^\s*pago\b[,\.;:!?-]*\s*",
+                "",
+                next_text,
+                flags=re.IGNORECASE,
+            )
+
+    return segments
+
+
 def fix_tap_terminology(text: str) -> str:
     """Normalize TAP terminology for Mercado Pago Tap jobs."""
     if not text:
@@ -253,19 +283,26 @@ def transcribe_audio_array(
             final_segments = split_segments
             _log(f"Split long phrases (max_chars_per_phrase={max_chars_per_phrase}); {len(final_segments)} segments.")
     
+    final_segments = _merge_mercado_pago_across_segments(final_segments)
+
     _log(f"Writing {len(final_segments)} subtitles to {output_srt_path}...")
     with open(output_srt_path, "w", encoding="utf-8") as f:
-        for i, segment in enumerate(final_segments):
+        subtitle_index = 1
+        for segment in final_segments:
             start = format_timestamp(segment["start"])
             end = format_timestamp(segment["end"])
             text = segment["text"].strip()
             text = normalize_mercado_pago(text)
             if is_tap_job:
                 text = fix_tap_terminology(text)
+
+            if not text:
+                continue
             
-            f.write(f"{i+1}\n")
+            f.write(f"{subtitle_index}\n")
             f.write(f"{start} --> {end}\n")
             f.write(f"{text}\n\n")
+            subtitle_index += 1
             
     _log(f"Transcription complete in {time.time() - start_time:.1f}s")
 

@@ -3,6 +3,7 @@ from moviepy.editor import TextClip, CompositeVideoClip, VideoFileClip, ImageCli
 from typing import Dict, Any, List, Tuple, Optional
 from PIL import Image, ImageFilter, ImageDraw
 import numpy as np
+import re
 
 
 def create_rounded_box_clip(
@@ -33,7 +34,14 @@ def wrap_text_to_lines(text: str, max_chars_per_line: int) -> str:
     """Wrap text into lines of at most max_chars_per_line characters (break at spaces)."""
     if max_chars_per_line <= 0 or not text or not text.strip():
         return text.strip() if text else ""
-    words = text.strip().split()
+    # Keep brand phrase together so wrapping never splits it.
+    protected_text = re.sub(
+        r"\bmercado\s+pago\b",
+        "Mercado_Pago",
+        text.strip(),
+        flags=re.IGNORECASE,
+    )
+    words = protected_text.split()
     lines: List[str] = []
     current: List[str] = []
     current_len = 0
@@ -43,11 +51,11 @@ def wrap_text_to_lines(text: str, max_chars_per_line: int) -> str:
             current.append(w)
             current_len += need
         else:
-            lines.append(" ".join(current))
+            lines.append(" ".join(current).replace("Mercado_Pago", "Mercado Pago"))
             current = [w]
             current_len = len(w)
     if current:
-        lines.append(" ".join(current))
+        lines.append(" ".join(current).replace("Mercado_Pago", "Mercado Pago"))
     return "\n".join(lines)
 
 
