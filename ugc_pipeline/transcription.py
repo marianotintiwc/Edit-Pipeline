@@ -22,6 +22,8 @@ def format_timestamp(seconds: float) -> str:
 
 import numpy as np
 
+from ugc_pipeline.subtitle_tokens import normalize_subtitle_tokens
+
 def normalize_mercado_pago(text: str) -> str:
     """Normalize any Mercado Pago variants to 'Mercado Pago'."""
     if not text:
@@ -293,6 +295,7 @@ def transcribe_audio_array(
             end = format_timestamp(segment["end"])
             text = segment["text"].strip()
             text = normalize_mercado_pago(text)
+            text = normalize_subtitle_tokens(text)
             if is_tap_job:
                 text = fix_tap_terminology(text)
 
