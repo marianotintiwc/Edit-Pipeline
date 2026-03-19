@@ -188,6 +188,18 @@ Conclusión práctica:
 | `highlight.stroke_color` | `#333333` | Nested under highlight |
 | `highlight.stroke_width` | `4` | Nested under highlight |
 
+### Frame-centered cajita / karaoke (16:9 UAC)
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| `subtitle_frame_horizontal_center` | `true` | Horizontal anchor = `video_w // 2`; Y still uses `position` + UAC/TikTok `margin_bottom`. |
+| `subtitle_horizontal_ignore_safe_zone` | `true` | **Horizontal true center + full frame width** for karaoke/cajita fit; restores **`margin_bottom` from style** (value before UAC scaling). Pair with `"position": "center_bottom"` and set `margin_bottom` in the payload for lower third. |
+| `subtitle_true_frame_center` | `true` | **Full geometric center:** `margin_left/right` 0, `safe_width = video_w`, X/Y centered on frame `(video_h - fontsize) // 2`. Use with `"position": "center"`. |
+
+**Deploy:** requires Docker image built from repo `ugc_pipeline/subtitles.py` (RunPod must run that build).
+
+**Horizontal CSV script** sends `subtitle_horizontal_ignore_safe_zone: true`, `position: center_bottom`, `margin_bottom` from delta (lower third), Meli flat subs, `fontsize` default **44**.
+
 ## Endcard
 - Enabled: true
 - Overlap seconds: 0.5

@@ -119,6 +119,8 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
     stroke_width = style_config.get("stroke_width", 2)
     position = style_config.get("position", "center_bottom") # simplified handling
     margin_bottom = style_config.get("margin_bottom", 100)
+    # UAC/TikTok blocks overwrite margin_bottom; preserve style value for optional restore.
+    style_margin_bottom = margin_bottom
     
     highlight_enabled = style_config.get("highlight", {}).get("enabled", False)
     highlight_color = style_config.get("highlight", {}).get("color", "yellow")
@@ -165,6 +167,28 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         margin_bottom = int(uac.get("bottom", 504) * sy)
         margin_top = int(uac.get("top", 40) * sy)
         safe_width = video_w - margin_left - margin_right
+
+    # Horizontal anchor for subtitle row / cajita: default = center of UAC/TikTok safe zone.
+    # subtitle_frame_horizontal_center: X = frame center (safe_width still from UAC for line fit).
+    # subtitle_horizontal_ignore_safe_zone: full frame width for fit + X = frame center; Y uses
+    #   style_config margin_bottom (before UAC), with position center_bottom / center.
+    # subtitle_true_frame_center: geometric center X+Y; full frame width; ignores safe zones.
+    true_frame_center = bool(style_config.get("subtitle_true_frame_center", False))
+    horizontal_ignore_safe = bool(style_config.get("subtitle_horizontal_ignore_safe_zone", False))
+    if true_frame_center:
+        margin_left = 0
+        margin_right = 0
+        safe_width = video_w
+        h_center_x = video_w // 2
+    elif horizontal_ignore_safe:
+        margin_left = 0
+        margin_right = 0
+        safe_width = video_w
+        h_center_x = video_w // 2
+        margin_bottom = int(style_margin_bottom)
+    else:
+        use_frame_h_center = bool(style_config.get("subtitle_frame_horizontal_center", False))
+        h_center_x = (video_w // 2) if use_frame_h_center else (margin_left + safe_width // 2)
 
     # SUPERSAMPLING FACTOR (3x for high quality antialiasing)
     SS = 3.0
@@ -295,7 +319,10 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
         # Determine position
         # For 'center_bottom', we calculate x=center, y=height - margin
         pos_x = 'center'
-        if position == 'center_bottom':
+        if true_frame_center:
+            # Geometric center of frame (approx. using fontsize as block height)
+            pos_y = (video_h - fontsize) // 2
+        elif position == 'center_bottom':
             pos_y = video_h - margin_bottom - fontsize # Approximate
         elif position == 'center':
             pos_y = (video_h - fontsize) // 2  # Center vertically
@@ -439,7 +466,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
                     total_w += spacing
                 if right_clip:
                     total_w += spacing
-            start_x = margin_left + (safe_width - total_w) // 2
+            start_x = h_center_x - (total_w // 2)
             current_x = start_x
 
             # Position and add clips
@@ -781,7 +808,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
 
              s_clip = s_clip.set_opacity(effective_opacity)
              if highlight_enabled:
-                 center_x = margin_left + safe_width // 2
+                 center_x = h_center_x
                  text_pos_x_for_shadow = center_x - (s_clip.w // 2)
                  s_pos_x = text_pos_x_for_shadow + shadow_offset + pos_x_offset
              else:
@@ -824,7 +851,7 @@ def generate_subtitles(video_clip: VideoFileClip, srt_path: str, style_config: D
             pad_w, pad_h = 20, 10
             txt_w = getattr(txt_clip, "w", None)
             txt_h = getattr(txt_clip, "h", None)
-            center_x = margin_left + safe_width // 2
+            center_x = h_center_x
             text_pos_x = center_x - (int(txt_w) // 2) if txt_w is not None else std_pos_x
             if txt_w is not None and txt_h is not None:
                 bg_color_hex = hl.get("bg_color", "#FFE600")
