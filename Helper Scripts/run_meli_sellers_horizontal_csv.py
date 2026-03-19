@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""MP-Sellers 16:9 CSV → RunPod. meli_cases base_style + flat subtitles + horizontal preset."""
+"""MP-Sellers 16:9 CSV → RunPod. meli_cases base_style + flat subtitles + horizontal preset.
+
+Production config snapshot: config/mp_sellers_horizontal_hd15_production.json
+Canonical full batch CSV: Videos para Editar - SPLA.csv (74 jobs).
+"""
 from __future__ import annotations
 
 import argparse

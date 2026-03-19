@@ -1,0 +1,64 @@
+{
+  "_comment": "MP-Sellers 16:9 horizontal edit — configuración validada en producción (output aprobado). No editar sin revisar MELI_EDIT_CONFIG_NOTES.md § MP-Sellers horizontal HD15.",
+  "name": "mp_sellers_horizontal_hd15_point_smart",
+  "validated": "2026-03-14",
+  "worker_requirement": "Docker image built from Edit-Pipeline ≥ v1.38 (ugc_pipeline/subtitles.py: subtitle_horizontal_ignore_safe_zone)",
+  "submit": {
+    "script": "Helper Scripts/run_meli_sellers_horizontal_csv.py",
+    "example": "python3 \"Helper Scripts/run_meli_sellers_horizontal_csv.py\" --csv \"Videos para Editar - SPLA.csv\" --results-json meli_sellers_horizontal_spla_results.json",
+    "env": {
+      "RUNPOD_API_KEY": "required",
+      "RUNPOD_ENDPOINT_ID": "optional, default h55ft9cy7fyi1d",
+      "MELI_HORIZONTAL_SUBTITLE_FONTSIZE": "optional, default 44",
+      "MELI_HORIZONTAL_CLIP_ORDER": "optional linear | meli-classic, default linear",
+      "RUNPOD_WORKERS": "optional parallel submits, default 8"
+    }
+  },
+  "payload_constants": {
+    "aspect_ratio": "16:9",
+    "edit_preset": "horizontal",
+    "subtitle_mode": "auto",
+    "music_url": "random",
+    "resolution": [1920, 1080],
+    "output_bucket": "meli-ai.filmmaker",
+    "output_folder": "MP-Sellers/Outputs-Horizontal-HD15-Master",
+    "output_filename_pattern": "{folder_sanitized}_16x9_MELI_EDIT.mp4",
+    "job_id_prefix": "sellers_h15_"
+  },
+  "style_source": {
+    "base": "presets/meli_cases.json → key `base_style`",
+    "flat_subtitle_transform": "ugc_tools.meli_subtitle_style.apply_meli_flat_subtitle_style (stroke 0, fill from stroke_color, highlight text from stroke_color)"
+  },
+  "style_delta": {
+    "resolution": [1920, 1080],
+    "margin_bottom": 378,
+    "position": "center_bottom",
+    "subtitle_horizontal_ignore_safe_zone": true,
+    "shadow": { "enabled": false },
+    "uac_16x9_margins": {
+      "ref_width": 1920,
+      "ref_height": 1080,
+      "top": 40,
+      "bottom": 378,
+      "left": 105,
+      "right": 516
+    },
+    "postprocess": {
+      "output": { "profile": "master", "crf": 18, "preset": "slow" }
+    }
+  },
+  "subtitle_defaults_applied_by_script": {
+    "fontsize": 44,
+    "position": "center_bottom",
+    "shadow_enabled": false
+  },
+  "clip_order_default": "linear",
+  "canonical_csv": {
+    "primary_batch_list": "Videos para Editar - SPLA.csv",
+    "row_counts": {
+      "Videos para Editar - SPLA.csv": 74,
+      "videos horizaontales para editar 19-3.csv": 39
+    },
+    "note": "El batch 19-3 es subconjunto (39) de la lista SPLA completa (74). Para cubrir todo Point Smart horizontal, usar SPLA."
+  }
+}

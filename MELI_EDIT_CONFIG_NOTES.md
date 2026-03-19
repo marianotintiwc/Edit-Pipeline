@@ -200,6 +200,26 @@ Conclusión práctica:
 
 **Horizontal CSV script** sends `subtitle_horizontal_ignore_safe_zone: true`, `position: center_bottom`, `margin_bottom` from delta (lower third), Meli flat subs, `fontsize` default **44**.
 
+### MP-Sellers horizontal HD15 — producción (validada)
+
+Configuración **congelada** y referencia de batches:
+
+| Artefacto | Descripción |
+|-----------|-------------|
+| `config/mp_sellers_horizontal_hd15_production.json` | Delta de estilo, defaults, bucket/carpeta, requisito de worker (v1.38+), ejemplo de comando. |
+| `Videos para Editar - SPLA.csv` | **Lista canónica** Point Smart horizontal: **74** filas con todas las URLs (intro, 3 escenas, broll, endcard). |
+| `videos horizaontales para editar 19-3.csv` | Subconjunto usado en un pilot: **39** jobs; **no** cubre los 74 de SPLA. |
+
+Enviar la lista completa:
+
+```bash
+python3 "Helper Scripts/run_meli_sellers_horizontal_csv.py" \
+  --csv "Videos para Editar - SPLA.csv" \
+  --results-json meli_sellers_horizontal_spla_results.json
+```
+
+Salida esperada: `s3://meli-ai.filmmaker/MP-Sellers/Outputs-Horizontal-HD15-Master/<carpeta>_16x9_MELI_EDIT.mp4`.
+
 ## Endcard
 - Enabled: true
 - Overlap seconds: 0.5
